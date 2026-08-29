@@ -10,6 +10,9 @@ import {
   shortDate,
   getUserName,
   saveUserName,
+  getLogs,
+  addLog,
+  deleteLog,
   type DiaryEntry,
 } from "../lib/diary-store";
 
