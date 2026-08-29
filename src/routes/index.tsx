@@ -8,6 +8,8 @@ import {
   todayKey,
   prettyDate,
   shortDate,
+  getUserName,
+  saveUserName,
   type DiaryEntry,
 } from "../lib/diary-store";
 
