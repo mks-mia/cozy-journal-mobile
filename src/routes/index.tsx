@@ -64,6 +64,11 @@ function DiaryApp() {
     setView("today");
   };
 
+  const goLog = () => {
+    setReading(null);
+    setView("log");
+  };
+
   const handleNameSubmit = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed) return;
@@ -101,7 +106,13 @@ function DiaryApp() {
               setReading(null);
               setView("entries");
             }}
+            onGoLog={goLog}
             onSaved={() => forceTick((n) => n + 1)}
+          />
+        ) : view === "log" ? (
+          <LogView
+            onToday={goToday}
+            onChanged={() => forceTick((n) => n + 1)}
           />
         ) : reading ? (
           <ReadView
