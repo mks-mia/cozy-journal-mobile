@@ -123,10 +123,12 @@ function DiaryApp() {
 }
 
 function Header({
+  name,
   entryCount,
   onEntries,
   onHome,
 }: {
+  name: string;
   entryCount: number;
   onEntries: () => void;
   onHome: () => void;
