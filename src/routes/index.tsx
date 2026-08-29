@@ -418,6 +418,80 @@ function BottomNav({
   );
 }
 
+function WelcomeScreen({ onDone }: { onDone: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const canSubmit = name.trim().length > 0;
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const submit = () => {
+    if (canSubmit) onDone(name);
+  };
+
+  return (
+    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-vellum px-6 pb-8 pt-10 font-sans text-ink">
+      <div className="lamp" />
+      <div className="absolute -left-24 -top-24 size-72 rounded-full bg-lamplight/15 blur-3xl animate-sheen" />
+
+      <div className="relative z-10 flex flex-1 flex-col justify-center">
+        <span className="grid size-14 place-items-center rounded-[16px] bg-ink font-serif text-2xl text-vellum">
+          L
+        </span>
+
+        <h1 className="mt-7 font-serif text-[42px] font-semibold leading-[1.05] tracking-tight text-balance animate-fade-up">
+          Your diary,
+          <br />
+          waiting for a name.
+        </h1>
+        <p className="mt-4 max-w-xs font-sans text-[15px] leading-relaxed text-ink-soft animate-fade-up">
+          Everything stays on this device. Just tell us who you are and we&apos;ll
+          set the page for you.
+        </p>
+
+        <form
+          className="mt-9 animate-fade-up"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <label
+            htmlFor="welcome-name"
+            className="font-mono text-[10px] uppercase tracking-[0.2em] text-lamplight"
+          >
+            Your name
+          </label>
+          <input
+            id="welcome-name"
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Maya"
+            autoComplete="given-name"
+            enterKeyHint="done"
+            className="mt-2 w-full rounded-[14px] border-0 bg-white/55 px-4 py-3.5 font-serif text-[20px] font-medium text-ink placeholder:text-ink-soft/40 ring-1 ring-white/70 backdrop-blur-md transition focus:ring-2 focus:ring-lamplight/50 focus:outline-none"
+          />
+
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="mt-6 w-full rounded-full bg-ink py-3.5 font-sans text-[15px] font-medium text-vellum transition-opacity disabled:opacity-35"
+          >
+            Open my diary
+          </button>
+        </form>
+      </div>
+
+      <p className="relative z-10 mt-8 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-ink-soft">
+        private · on-device · no account
+      </p>
+    </div>
+  );
+}
+
 function formatClock(): string {
   const d = new Date();
   const h = String(d.getHours()).padStart(2, "0");
