@@ -57,9 +57,13 @@ function DiaryApp() {
           onHome={goToday}
         />
 
-        {view === "today" ? (
+{view === "today" ? (
           <TodayView
             onViewEntry={openEntry}
+            onGoEntries={() => {
+              setReading(null);
+              setView("entries");
+            }}
             onSaved={() => forceTick((n) => n + 1)}
           />
         ) : reading ? (
