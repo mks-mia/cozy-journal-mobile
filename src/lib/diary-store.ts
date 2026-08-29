@@ -7,6 +7,25 @@ export type DiaryEntry = {
 };
 
 const STORAGE_KEY = "lamplit.diary.entries.v1";
+const NAME_KEY = "lamplit.diary.userName.v1";
+
+export function getUserName(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(NAME_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveUserName(name: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NAME_KEY, name.trim());
+  } catch {
+    // ignore
+  }
+}
 
 function loadEntries(): DiaryEntry[] {
   if (typeof window === "undefined") return [];
