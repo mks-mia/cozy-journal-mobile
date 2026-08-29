@@ -120,32 +120,17 @@ function Header({
         </span>
       </button>
 
-      {!showingHome && (
-        <button
-          onClick={onEntries}
-          className="rounded-full bg-white/55 px-3.5 py-2 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/80"
-        >
-          Entries
-          {entryCount > 0 && (
-            <span className="ml-1.5 font-mono text-[11px] text-ink-soft">
-              {entryCount}
-            </span>
-          )}
-        </button>
-      )}
-      {showingHome && (
-        <button
-          onClick={onEntries}
-          className="rounded-full bg-white/55 px-3.5 py-2 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/80"
-        >
-          Entries
-          {entryCount > 0 && (
-            <span className="ml-1.5 font-mono text-[11px] text-ink-soft">
-              {entryCount}
-            </span>
-          )}
-        </button>
-      )}
+<button
+        onClick={onEntries}
+        className="rounded-full bg-white/55 px-3.5 py-2 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/80"
+      >
+        Entries
+        {entryCount > 0 && (
+          <span className="ml-1.5 font-mono text-[11px] text-ink-soft">
+            {entryCount}
+          </span>
+        )}
+      </button>
     </header>
   );
 }
