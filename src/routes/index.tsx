@@ -59,7 +59,6 @@ function DiaryApp() {
 
 {view === "today" ? (
           <TodayView
-            onViewEntry={openEntry}
             onGoEntries={() => {
               setReading(null);
               setView("entries");
