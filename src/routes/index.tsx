@@ -10,6 +10,9 @@ import {
   shortDate,
   getUserName,
   saveUserName,
+  getLogs,
+  addLog,
+  deleteLog,
   type DiaryEntry,
 } from "../lib/diary-store";
 
@@ -37,7 +40,7 @@ function Index() {
   return <DiaryApp />;
 }
 
-type View = "today" | "entries";
+type View = "today" | "entries" | "log";
 
 function DiaryApp() {
   const [view, setView] = useState<View>("today");
@@ -59,6 +62,11 @@ function DiaryApp() {
   const goToday = () => {
     setReading(null);
     setView("today");
+  };
+
+  const goLog = () => {
+    setReading(null);
+    setView("log");
   };
 
   const handleNameSubmit = (value: string) => {
@@ -98,7 +106,13 @@ function DiaryApp() {
               setReading(null);
               setView("entries");
             }}
+            onGoLog={goLog}
             onSaved={() => forceTick((n) => n + 1)}
+          />
+        ) : view === "log" ? (
+          <LogView
+            onToday={goToday}
+            onChanged={() => forceTick((n) => n + 1)}
           />
         ) : reading ? (
           <ReadView

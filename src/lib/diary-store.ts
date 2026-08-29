@@ -6,8 +6,17 @@ export type DiaryEntry = {
   createdAt: number;
 };
 
+export type LogEntry = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH : mm
+  content: string;
+  createdAt: number;
+};
+
 const STORAGE_KEY = "lamplit.diary.entries.v1";
 const NAME_KEY = "lamplit.diary.userName.v1";
+const LOG_KEY = "lamplit.diary.logs.v1";
 
 export function getUserName(): string {
   if (typeof window === "undefined") return "";
@@ -84,6 +93,49 @@ export function upsertEntry(date: string, content: string): DiaryEntry {
 export function deleteEntry(id: string) {
   const entries = loadEntries().filter((e) => e.id !== id);
   saveEntries(entries);
+}
+
+function loadLogs(): LogEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLogs(logs: LogEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOG_KEY, JSON.stringify(logs));
+  } catch {
+    // ignore
+  }
+}
+
+export function getLogs(): LogEntry[] {
+  return loadLogs().sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function addLog(content: string): LogEntry {
+  const logs = loadLogs();
+  const entry: LogEntry = {
+    id: `log-${Date.now()}`,
+    date: todayKey(),
+    time: formatNow(),
+    content,
+    createdAt: Date.now(),
+  };
+  logs.push(entry);
+  saveLogs(logs);
+  return entry;
+}
+
+export function deleteLog(id: string) {
+  saveLogs(loadLogs().filter((l) => l.id !== id));
 }
 
 export function todayKey(): string {
