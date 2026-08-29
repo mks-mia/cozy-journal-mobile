@@ -42,7 +42,9 @@ function DiaryApp() {
   const [reading, setReading] = useState<DiaryEntry | null>(null);
   const [, forceTick] = useState(0);
 
-  const entries = useMemo(() => getEntries(), [forceTick]);
+  // Read fresh on every render — entries are few and this keeps the list
+  // in sync with localStorage after autosave.
+  const entries = getEntries();
 
   const openEntry = (e: DiaryEntry) => {
     setReading(e);
