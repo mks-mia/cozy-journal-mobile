@@ -40,7 +40,7 @@ function Index() {
   return <DiaryApp />;
 }
 
-type View = "today" | "entries";
+type View = "today" | "entries" | "log";
 
 function DiaryApp() {
   const [view, setView] = useState<View>("today");
