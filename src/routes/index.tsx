@@ -83,6 +83,7 @@ function DiaryApp() {
 
       <div className="relative z-10 flex min-h-dvh flex-col px-5 pb-4 pt-5">
 <Header
+          name={name}
           entryCount={entries.length}
           onEntries={() => {
             setReading(null);
