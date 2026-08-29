@@ -175,3 +175,141 @@ export function shortDate(dateKey: string): string {
     month: "short",
   });
 }
+/* ---------------------------------- tasks --------------------------------- */
+
+export type Task = {
+  id: string;
+  title: string;
+  dueAt: number | null;
+  completed: boolean;
+  completedAt: number | null;
+  createdAt: number;
+  notified: string[]; // thresholds already fired, e.g. ["soon", "due"]
+};
+
+const TASK_KEY = "lamplit.diary.tasks.v1";
+const REMINDER_KEY = "lamplit.diary.reminders.v1";
+
+function loadTasks(): Task[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(TASK_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveTasks(tasks: Task[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(TASK_KEY, JSON.stringify(tasks));
+  } catch {
+    // ignore
+  }
+}
+
+export function getTasks(): Task[] {
+  return loadTasks();
+}
+
+export function addTask(title: string, dueAt: number | null): Task {
+  const tasks = loadTasks();
+  const task: Task = {
+    id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: title.trim(),
+    dueAt,
+    completed: false,
+    completedAt: null,
+    createdAt: Date.now(),
+    notified: [],
+  };
+  tasks.push(task);
+  saveTasks(tasks);
+  return task;
+}
+
+export function updateTask(id: string, patch: Partial<Omit<Task, "id">>) {
+  const tasks = loadTasks().map((t) => (t.id === id ? { ...t, ...patch } : t));
+  saveTasks(tasks);
+}
+
+export function toggleTask(id: string) {
+  const tasks = loadTasks().map((t) =>
+    t.id === id
+      ? {
+          ...t,
+          completed: !t.completed,
+          completedAt: !t.completed ? Date.now() : null,
+        }
+      : t,
+  );
+  saveTasks(tasks);
+}
+
+export function deleteTask(id: string) {
+  saveTasks(loadTasks().filter((t) => t.id !== id));
+}
+
+export function markNotified(id: string, threshold: string) {
+  const tasks = loadTasks().map((t) =>
+    t.id === id && !t.notified.includes(threshold)
+      ? { ...t, notified: [...t.notified, threshold] }
+      : t,
+  );
+  saveTasks(tasks);
+}
+
+/* -------------------------------- reminders ------------------------------- */
+
+export type ReminderState = { enabled: boolean };
+
+export function getReminderState(): ReminderState {
+  if (typeof window === "undefined") return { enabled: false };
+  try {
+    const raw = window.localStorage.getItem(REMINDER_KEY);
+    if (!raw) return { enabled: false };
+    const parsed = JSON.parse(raw);
+    return { enabled: Boolean(parsed?.enabled) };
+  } catch {
+    return { enabled: false };
+  }
+}
+
+export function setReminderState(state: ReminderState) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(REMINDER_KEY, JSON.stringify(state));
+  } catch {
+    // ignore
+  }
+}
+
+/* ---------------------------------- data ---------------------------------- */
+
+export function exportData(): string {
+  return JSON.stringify(
+    {
+      exportedAt: new Date().toISOString(),
+      name: getUserName(),
+      entries: loadEntries(),
+      logs: loadLogs(),
+      tasks: loadTasks(),
+    },
+    null,
+    2,
+  );
+}
+
+export function clearAllData() {
+  if (typeof window === "undefined") return;
+  for (const key of [STORAGE_KEY, LOG_KEY, TASK_KEY, REMINDER_KEY, NAME_KEY]) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+  }
+}

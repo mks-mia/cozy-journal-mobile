@@ -10,6 +10,7 @@
   --color-ink: hsl(222 30% 15%);
   --color-ink-soft: hsl(222 18% 42%);
   --color-lamplight: hsl(33 66% 56%);
+  --color-alert: hsl(8 62% 50%);
   --color-line: hsl(222 30% 15% / 0.1);
   --font-sans: "Inter", sans-serif;
   --font-serif: "Cormorant Garamond", serif;
