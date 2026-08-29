@@ -204,11 +204,9 @@ function TodayView({
         </div>
       </section>
 
-      <BottomNav
+<BottomNav
         mode="today"
-        onEntries={() => {
-          /* switch handled by parent via header; nav just for visual rhythm */
-        }}
+        onEntries={onGoEntries}
         hasTodayEntry={hasText}
       />
     </>
