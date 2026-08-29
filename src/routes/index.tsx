@@ -143,12 +143,12 @@ function Header({
         <span className="grid size-9 place-items-center rounded-[12px] bg-ink text-vellum font-serif text-lg">
           L
         </span>
-        <span className="leading-tight">
+<span className="leading-tight">
           <span className="block font-serif text-[19px] font-semibold tracking-tight">
             Lamplit
           </span>
-          <span className="block font-mono text-[9px] uppercase tracking-[0.22em] text-ink-soft">
-            private diary
+          <span className="block max-w-[150px] truncate font-mono text-[9px] uppercase tracking-[0.22em] text-ink-soft">
+            {name}&apos;s diary
           </span>
         </span>
       </button>
