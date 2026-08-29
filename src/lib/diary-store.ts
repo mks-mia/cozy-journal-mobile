@@ -95,6 +95,49 @@ export function deleteEntry(id: string) {
   saveEntries(entries);
 }
 
+function loadLogs(): LogEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLogs(logs: LogEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOG_KEY, JSON.stringify(logs));
+  } catch {
+    // ignore
+  }
+}
+
+export function getLogs(): LogEntry[] {
+  return loadLogs().sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function addLog(content: string): LogEntry {
+  const logs = loadLogs();
+  const entry: LogEntry = {
+    id: `log-${Date.now()}`,
+    date: todayKey(),
+    time: formatNow(),
+    content,
+    createdAt: Date.now(),
+  };
+  logs.push(entry);
+  saveLogs(logs);
+  return entry;
+}
+
+export function deleteLog(id: string) {
+  saveLogs(loadLogs().filter((l) => l.id !== id));
+}
+
 export function todayKey(): string {
   const d = new Date();
   return formatDateKey(d);
