@@ -133,11 +133,9 @@ function Header({
 }
 
 function TodayView({
-  onViewEntry,
   onGoEntries,
   onSaved,
 }: {
-  onViewEntry: (e: DiaryEntry) => void;
   onGoEntries: () => void;
   onSaved: () => void;
 }) {
