@@ -12,6 +12,22 @@ import {
 } from "../lib/diary-store";
 
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Lamplit — Private Daily Diary" },
+      {
+        name: "description",
+        content:
+          "A calm, private space to write a little each day. Your diary stays on this device — nothing is sent anywhere.",
+      },
+      { property: "og:title", content: "Lamplit — Private Daily Diary" },
+      {
+        property: "og:description",
+        content:
+          "A calm, private space to write a little each day. Your diary stays on this device.",
+      },
+    ],
+  }),
   component: Index,
 });
 
