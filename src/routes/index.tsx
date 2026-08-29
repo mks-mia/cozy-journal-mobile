@@ -87,19 +87,14 @@ function DiaryApp() {
 }
 
 function Header({
-  view,
-  reading,
   entryCount,
   onEntries,
   onHome,
 }: {
-  view: View;
-  reading: DiaryEntry | null;
   entryCount: number;
   onEntries: () => void;
   onHome: () => void;
 }) {
-  const showingHome = view === "today" && !reading;
   return (
     <header className="flex items-center justify-between">
       <button
