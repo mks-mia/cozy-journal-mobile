@@ -44,6 +44,9 @@ function DiaryApp() {
   const [reading, setReading] = useState<DiaryEntry | null>(null);
   const [, forceTick] = useState(0);
 
+  // Onboarding: ask for the user's name on first open.
+  const [name, setName] = useState<string>(() => getUserName());
+
   // Read fresh on every render — entries are few and this keeps the list
   // in sync with localStorage after autosave.
   const entries = getEntries();
@@ -57,6 +60,17 @@ function DiaryApp() {
     setReading(null);
     setView("today");
   };
+
+  const handleNameSubmit = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    saveUserName(trimmed);
+    setName(trimmed);
+  };
+
+  if (!name) {
+    return <WelcomeScreen onDone={handleNameSubmit} />;
+  }
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-vellum text-ink font-sans">
