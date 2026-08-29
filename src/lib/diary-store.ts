@@ -6,8 +6,17 @@ export type DiaryEntry = {
   createdAt: number;
 };
 
+export type LogEntry = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH : mm
+  content: string;
+  createdAt: number;
+};
+
 const STORAGE_KEY = "lamplit.diary.entries.v1";
 const NAME_KEY = "lamplit.diary.userName.v1";
+const LOG_KEY = "lamplit.diary.logs.v1";
 
 export function getUserName(): string {
   if (typeof window === "undefined") return "";
