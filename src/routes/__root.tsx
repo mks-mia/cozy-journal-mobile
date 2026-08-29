@@ -74,11 +74,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
 head: () => ({
-    meta: [
+meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Lamplit — Private Daily Diary" },
       { name: "description", content: "A calm, private space to write a little each day. Your diary stays on this device — nothing is sent anywhere." },
+      { name: "theme-color", content: "#f3ead8" },
       { property: "og:title", content: "Lamplit — Private Daily Diary" },
       { property: "og:description", content: "A calm, private space to write a little each day. Your diary stays on this device." },
       { property: "og:type", content: "website" },
@@ -102,7 +103,9 @@ head: () => ({
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap",
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", type: "image/png", href: "/favicon.png" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
