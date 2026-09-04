@@ -12,10 +12,10 @@ const newSession = (): Session => ({
 
 export function FriendChat({ name }: { name: string }) {
   const [sessions, setSessions] = useState<Session[]>(() => [newSession()]);
-  const [activeId, setActiveId] = useState<string>(() => sessions[0].id);
+  const [activeId, setActiveId] = useState<string>(() => sessions[0]!.id);
   const [listOpen, setListOpen] = useState(false);
 
-  const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
+  const active = sessions.find((s) => s.id === activeId) ?? sessions[0]!;
 
   const startChat = () => {
     const s = newSession();
@@ -37,7 +37,7 @@ export function FriendChat({ name }: { name: string }) {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
       const list = next.length > 0 ? next : [newSession()];
-      if (id === activeId) setActiveId(list[0].id);
+      if (id === activeId) setActiveId(list[0]!.id);
       return list;
     });
   };
