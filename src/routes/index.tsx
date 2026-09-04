@@ -34,6 +34,7 @@ import {
   relativeDue,
   urgency,
 } from "../lib/reminders";
+import { FriendChat } from "../components/friend-chat";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -64,7 +65,14 @@ function Index() {
   return <DiaryApp />;
 }
 
-type View = "today" | "entries" | "read" | "log" | "tasks" | "settings";
+type View =
+  | "today"
+  | "entries"
+  | "read"
+  | "log"
+  | "tasks"
+  | "friend"
+  | "settings";
 
 function DiaryApp() {
   const [view, setView] = useState<View>("today");
@@ -139,8 +147,14 @@ function DiaryApp() {
     return <WelcomeScreen onDone={handleNameSubmit} />;
   }
 
-  const tab: "today" | "log" | "tasks" =
-    view === "log" ? "log" : view === "tasks" ? "tasks" : "today";
+  const tab: "today" | "log" | "tasks" | "friend" =
+    view === "log"
+      ? "log"
+      : view === "tasks"
+        ? "tasks"
+        : view === "friend"
+          ? "friend"
+          : "today";
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-vellum text-ink font-sans">
@@ -173,6 +187,8 @@ function DiaryApp() {
           <LogView onChanged={refresh} />
         ) : view === "tasks" ? (
           <TasksView now={now} buckets={buckets} onChanged={refresh} />
+        ) : view === "friend" ? (
+          <FriendChat name={name} />
         ) : view === "settings" ? (
           <SettingsView
             name={name}
@@ -208,6 +224,7 @@ function DiaryApp() {
           onToday={() => go("today")}
           onLog={() => go("log")}
           onTasks={() => go("tasks")}
+          onFriend={() => go("friend")}
         />
       </div>
     </div>
@@ -1018,12 +1035,14 @@ function BottomNav({
   onToday,
   onLog,
   onTasks,
+  onFriend,
 }: {
-  tab: "today" | "log" | "tasks";
+  tab: "today" | "log" | "tasks" | "friend";
   taskBadge: number;
   onToday: () => void;
   onLog: () => void;
   onTasks: () => void;
+  onFriend: () => void;
 }) {
   const item = (active: boolean) =>
     `relative flex-1 rounded-full py-2.5 text-center font-sans text-[13px] font-medium transition-colors ${
@@ -1051,6 +1070,9 @@ function BottomNav({
             {taskBadge}
           </span>
         )}
+      </button>
+      <button onClick={onFriend} className={item(tab === "friend")}>
+        Friend
       </button>
     </nav>
   );
