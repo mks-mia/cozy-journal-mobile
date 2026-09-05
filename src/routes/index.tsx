@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getEntries,
-  getEntryForDate,
-  upsertEntry,
-  deleteEntry,
+  getPages,
+  getPage,
+  createPage,
+  updatePage,
+  renamePage,
+  deletePage,
+  stamp,
   todayKey,
   prettyDate,
   shortDate,
@@ -22,10 +25,11 @@ import {
   setReminderState,
   exportData,
   clearAllData,
-  type DiaryEntry,
+  type DiaryPage,
   type LogEntry,
   type Task,
 } from "../lib/diary-store";
+
 import {
   bucketTasks,
   dueNotifications,
