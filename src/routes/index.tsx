@@ -1062,14 +1062,14 @@ function PagesList({
 function BottomNav({
   tab,
   taskBadge,
-  onToday,
+  onDiary,
   onLog,
   onTasks,
   onFriend,
 }: {
-  tab: "today" | "log" | "tasks" | "friend";
+  tab: "diary" | "log" | "tasks" | "friend";
   taskBadge: number;
-  onToday: () => void;
+  onDiary: () => void;
   onLog: () => void;
   onTasks: () => void;
   onFriend: () => void;
@@ -1083,7 +1083,7 @@ function BottomNav({
 
   return (
     <nav className="glass mt-3 flex items-center gap-1 rounded-full p-1 ring-1 ring-white/70">
-      <button onClick={onToday} className={item(tab === "today")}>
+      <button onClick={onDiary} className={item(tab === "diary")}>
         Diary
       </button>
       <button onClick={onLog} className={item(tab === "log")}>
