@@ -130,13 +130,13 @@ function DiaryApp() {
     refresh();
   }, [now]);
 
-  const openEntry = (e: DiaryEntry) => {
-    setReading(e);
-    setView("read");
+  const openPage = (id: string) => {
+    setOpenId(id);
+    setView("page");
   };
 
   const go = (next: View) => {
-    setReading(null);
+    setOpenId(null);
     setView(next);
   };
 
@@ -147,18 +147,24 @@ function DiaryApp() {
     setName(trimmed);
   };
 
+  if (!hydrated) {
+    return <div className="min-h-dvh bg-vellum" />;
+  }
+
   if (!name) {
     return <WelcomeScreen onDone={handleNameSubmit} />;
   }
 
-  const tab: "today" | "log" | "tasks" | "friend" =
+  const tab: "diary" | "log" | "tasks" | "friend" =
     view === "log"
       ? "log"
       : view === "tasks"
         ? "tasks"
         : view === "friend"
           ? "friend"
-          : "today";
+          : "diary";
+
+  const open = openId ? getPage(openId) : undefined;
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-vellum text-ink font-sans">
@@ -172,7 +178,7 @@ function DiaryApp() {
       <div className="relative z-10 flex min-h-dvh flex-col px-5 pb-4 pt-5">
         <Header
           name={name}
-          onHome={() => go("today")}
+          onHome={() => go("pages")}
           onSettings={() => go("settings")}
         />
 
@@ -185,9 +191,7 @@ function DiaryApp() {
           />
         )}
 
-        {view === "today" ? (
-          <TodayView onGoEntries={() => go("entries")} onSaved={refresh} />
-        ) : view === "log" ? (
+        {view === "log" ? (
           <LogView onChanged={refresh} />
         ) : view === "tasks" ? (
           <TasksView now={now} buckets={buckets} onChanged={refresh} />
@@ -199,37 +203,39 @@ function DiaryApp() {
             onRename={(value) => {
               handleNameSubmit(value);
             }}
-            onBack={() => go("today")}
+            onBack={() => go("pages")}
             onCleared={() => {
               setName("");
               refresh();
             }}
           />
-        ) : view === "read" && reading ? (
-          <ReadView
-            entry={reading}
-            onBack={() => go("today")}
-            onDelete={() => {
-              deleteEntry(reading.id);
-              go("entries");
-            }}
+        ) : view === "page" && open ? (
+          <PageView
+            page={open}
+            onBack={() => go("pages")}
+            onChanged={refresh}
+            onDeleted={() => go("pages")}
           />
         ) : (
-          <EntriesList
-            entries={entries}
-            onOpen={openEntry}
-            onToday={() => go("today")}
+          <PagesList
+            pages={pages}
+            onOpen={openPage}
+            onCreate={(title) => {
+              const created = createPage(title);
+              openPage(created.id);
+            }}
           />
         )}
 
         <BottomNav
           tab={tab}
           taskBadge={dueSoonCount}
-          onToday={() => go("today")}
+          onDiary={() => go("pages")}
           onLog={() => go("log")}
           onTasks={() => go("tasks")}
           onFriend={() => go("friend")}
         />
+
       </div>
     </div>
   );
