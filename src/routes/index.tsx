@@ -69,30 +69,30 @@ function Index() {
   return <DiaryApp />;
 }
 
-type View =
-  | "today"
-  | "entries"
-  | "read"
-  | "log"
-  | "tasks"
-  | "friend"
-  | "settings";
+type View = "pages" | "page" | "log" | "tasks" | "friend" | "settings";
 
 function DiaryApp() {
-  const [view, setView] = useState<View>("today");
-  const [reading, setReading] = useState<DiaryEntry | null>(null);
+  const [view, setView] = useState<View>("pages");
+  const [openId, setOpenId] = useState<string | null>(null);
   const [, forceTick] = useState(0);
   const refresh = () => forceTick((n) => n + 1);
 
-  const [name, setName] = useState<string>(() => getUserName());
+  const [hydrated, setHydrated] = useState(false);
+  const [name, setName] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  useEffect(() => {
+    setName(getUserName());
+    setHydrated(true);
+  }, []);
+
   // Read fresh every render — small data set, always in sync with storage.
-  const entries = getEntries();
-  const tasks = getTasks();
+  const pages = hydrated ? getPages() : [];
+  const tasks = hydrated ? getTasks() : [];
   const buckets = bucketTasks(tasks, now);
   const dueSoonCount = buckets.overdue.length + buckets.today.length;
+
 
   // Tick every minute so relative labels and reminders stay current.
   useEffect(() => {
