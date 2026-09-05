@@ -294,6 +294,7 @@ export function exportData(): string {
     {
       exportedAt: new Date().toISOString(),
       name: getUserName(),
+      pages: loadPages(),
       entries: loadEntries(),
       logs: loadLogs(),
       tasks: loadTasks(),
@@ -305,13 +306,23 @@ export function exportData(): string {
 
 export function clearAllData() {
   if (typeof window === "undefined") return;
-  for (const key of [STORAGE_KEY, LOG_KEY, TASK_KEY, REMINDER_KEY, NAME_KEY]) {
+  for (const key of [
+    STORAGE_KEY,
+    LOG_KEY,
+    TASK_KEY,
+    REMINDER_KEY,
+    NAME_KEY,
+    PAGE_KEY,
+    PAGE_MIGRATION_KEY,
+  ]) {
     try {
       window.localStorage.removeItem(key);
     } catch {
       // ignore
     }
   }
+}
+
 }
 
 /* --------------------------------- pages ---------------------------------- */
