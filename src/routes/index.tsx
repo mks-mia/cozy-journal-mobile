@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getEntries,
-  getEntryForDate,
-  upsertEntry,
-  deleteEntry,
+  getPages,
+  getPage,
+  createPage,
+  updatePage,
+  renamePage,
+  deletePage,
+  stamp,
   todayKey,
   prettyDate,
   shortDate,
@@ -22,10 +25,11 @@ import {
   setReminderState,
   exportData,
   clearAllData,
-  type DiaryEntry,
+  type DiaryPage,
   type LogEntry,
   type Task,
 } from "../lib/diary-store";
+
 import {
   bucketTasks,
   dueNotifications,
@@ -65,30 +69,30 @@ function Index() {
   return <DiaryApp />;
 }
 
-type View =
-  | "today"
-  | "entries"
-  | "read"
-  | "log"
-  | "tasks"
-  | "friend"
-  | "settings";
+type View = "pages" | "page" | "log" | "tasks" | "friend" | "settings";
 
 function DiaryApp() {
-  const [view, setView] = useState<View>("today");
-  const [reading, setReading] = useState<DiaryEntry | null>(null);
+  const [view, setView] = useState<View>("pages");
+  const [openId, setOpenId] = useState<string | null>(null);
   const [, forceTick] = useState(0);
   const refresh = () => forceTick((n) => n + 1);
 
-  const [name, setName] = useState<string>(() => getUserName());
+  const [hydrated, setHydrated] = useState(false);
+  const [name, setName] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  useEffect(() => {
+    setName(getUserName());
+    setHydrated(true);
+  }, []);
+
   // Read fresh every render — small data set, always in sync with storage.
-  const entries = getEntries();
-  const tasks = getTasks();
+  const pages = hydrated ? getPages() : [];
+  const tasks = hydrated ? getTasks() : [];
   const buckets = bucketTasks(tasks, now);
   const dueSoonCount = buckets.overdue.length + buckets.today.length;
+
 
   // Tick every minute so relative labels and reminders stay current.
   useEffect(() => {
@@ -126,13 +130,13 @@ function DiaryApp() {
     refresh();
   }, [now]);
 
-  const openEntry = (e: DiaryEntry) => {
-    setReading(e);
-    setView("read");
+  const openPage = (id: string) => {
+    setOpenId(id);
+    setView("page");
   };
 
   const go = (next: View) => {
-    setReading(null);
+    setOpenId(null);
     setView(next);
   };
 
@@ -143,18 +147,24 @@ function DiaryApp() {
     setName(trimmed);
   };
 
+  if (!hydrated) {
+    return <div className="min-h-dvh bg-vellum" />;
+  }
+
   if (!name) {
     return <WelcomeScreen onDone={handleNameSubmit} />;
   }
 
-  const tab: "today" | "log" | "tasks" | "friend" =
+  const tab: "diary" | "log" | "tasks" | "friend" =
     view === "log"
       ? "log"
       : view === "tasks"
         ? "tasks"
         : view === "friend"
           ? "friend"
-          : "today";
+          : "diary";
+
+  const open = openId ? getPage(openId) : undefined;
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-vellum text-ink font-sans">
@@ -168,7 +178,7 @@ function DiaryApp() {
       <div className="relative z-10 flex min-h-dvh flex-col px-5 pb-4 pt-5">
         <Header
           name={name}
-          onHome={() => go("today")}
+          onHome={() => go("pages")}
           onSettings={() => go("settings")}
         />
 
@@ -181,9 +191,7 @@ function DiaryApp() {
           />
         )}
 
-        {view === "today" ? (
-          <TodayView onGoEntries={() => go("entries")} onSaved={refresh} />
-        ) : view === "log" ? (
+        {view === "log" ? (
           <LogView onChanged={refresh} />
         ) : view === "tasks" ? (
           <TasksView now={now} buckets={buckets} onChanged={refresh} />
@@ -195,37 +203,39 @@ function DiaryApp() {
             onRename={(value) => {
               handleNameSubmit(value);
             }}
-            onBack={() => go("today")}
+            onBack={() => go("pages")}
             onCleared={() => {
               setName("");
               refresh();
             }}
           />
-        ) : view === "read" && reading ? (
-          <ReadView
-            entry={reading}
-            onBack={() => go("today")}
-            onDelete={() => {
-              deleteEntry(reading.id);
-              go("entries");
-            }}
+        ) : view === "page" && open ? (
+          <PageView
+            page={open}
+            onBack={() => go("pages")}
+            onChanged={refresh}
+            onDeleted={() => go("pages")}
           />
         ) : (
-          <EntriesList
-            entries={entries}
-            onOpen={openEntry}
-            onToday={() => go("today")}
+          <PagesList
+            pages={pages}
+            onOpen={openPage}
+            onCreate={(title) => {
+              const created = createPage(title);
+              openPage(created.id);
+            }}
           />
         )}
 
         <BottomNav
           tab={tab}
           taskBadge={dueSoonCount}
-          onToday={() => go("today")}
+          onDiary={() => go("pages")}
           onLog={() => go("log")}
           onTasks={() => go("tasks")}
           onFriend={() => go("friend")}
         />
+
       </div>
     </div>
   );
@@ -335,77 +345,6 @@ function PageTitle({
         )}
       </div>
     </section>
-  );
-}
-
-function TodayView({
-  onGoEntries,
-  onSaved,
-}: {
-  onGoEntries: () => void;
-  onSaved: () => void;
-}) {
-  const key = todayKey();
-  const existing = useMemo(() => getEntryForDate(key), [key]);
-  const [text, setText] = useState(existing?.content ?? "");
-  const [savedAt, setSavedAt] = useState<string>(existing?.time ?? "19 : 00");
-  const [time, setTime] = useState(formatClock());
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleChange = (value: string) => {
-    setText(value);
-    setTime(formatClock());
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const saved = upsertEntry(key, value.trim());
-      setSavedAt(saved.time);
-      onSaved();
-    }, 600);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
-
-  const hasText = text.trim().length > 0;
-
-  return (
-    <>
-      <PageTitle eyebrow="Today" title={prettyDate(key)} meta={time} />
-
-      <section className="mt-4 flex-1 min-h-0">
-        <div className="glass flex h-full min-h-[42vh] flex-col overflow-hidden rounded-[20px] p-5 ring-1 ring-white/70">
-          <div className="flex items-center justify-between border-b border-line pb-2.5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
-              Entry
-            </p>
-            <p className="font-mono text-[10px] text-ink-soft">
-              {hasText ? `saved ${savedAt}` : "autosaved"}
-            </p>
-          </div>
-          <div className="ruled mt-1 min-h-0 flex-1">
-            <textarea
-              value={text}
-              onChange={(e) => handleChange(e.target.value)}
-              placeholder="What stayed with you today?"
-              aria-label="Today's diary entry"
-              className="h-full w-full resize-none bg-transparent font-serif text-[20px] font-medium leading-[46px] text-ink placeholder:text-ink-soft/50 focus:outline-none"
-            />
-          </div>
-        </div>
-      </section>
-
-      <div className="mt-3 flex justify-center">
-        <button
-          onClick={onGoEntries}
-          className="rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
-        >
-          Past entries
-        </button>
-      </div>
-    </>
   );
 }
 
@@ -914,37 +853,88 @@ function EmptyCard({ title, body }: { title: string; body: string }) {
   );
 }
 
-function ReadView({
-  entry,
+function PageView({
+  page,
   onBack,
-  onDelete,
+  onChanged,
+  onDeleted,
 }: {
-  entry: DiaryEntry;
+  page: DiaryPage;
   onBack: () => void;
-  onDelete: () => void;
+  onChanged: () => void;
+  onDeleted: () => void;
 }) {
+  const [text, setText] = useState(page.content);
+  const [title, setTitle] = useState(page.title);
+  const [updatedAt, setUpdatedAt] = useState(page.updatedAt);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setText(page.content);
+    setTitle(page.title);
+    setUpdatedAt(page.updatedAt);
+  }, [page.id]);
+
+  const handleChange = (value: string) => {
+    setText(value);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const saved = updatePage(page.id, value);
+      if (saved) setUpdatedAt(saved.updatedAt);
+      onChanged();
+    }, 600);
+  };
+
+  const commitTitle = () => {
+    const clean = title.trim();
+    if (clean === page.title) return;
+    renamePage(page.id, clean);
+    setTitle(clean || page.title);
+    onChanged();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
   return (
     <>
-      <PageTitle
-        eyebrow={shortDate(entry.date)}
-        title={prettyDate(entry.date)}
-        meta={entry.time}
-      />
+      <section className="mt-5 animate-fade-up">
+        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-lamplight">
+          Diary page
+        </p>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={commitTitle}
+          aria-label="Page title"
+          placeholder="Untitled page"
+          className="mt-1.5 w-full bg-transparent font-serif text-[30px] font-semibold leading-tight tracking-tight text-ink placeholder:text-ink-soft/40 focus:outline-none"
+        />
+        <p className="mt-1 font-mono text-[10px] text-ink-soft">
+          Updated {stamp(updatedAt)} · Started {stamp(page.createdAt)}
+        </p>
+      </section>
 
-      <section className="mt-4 flex-1 min-h-0">
-        <div className="glass flex h-full min-h-[42vh] flex-col overflow-hidden rounded-[20px] p-5 ring-1 ring-white/70">
+      <section className="mt-3 flex-1 min-h-0">
+        <div className="glass flex h-full min-h-[38vh] flex-col overflow-hidden rounded-[20px] p-5 ring-1 ring-white/70">
           <div className="flex items-center justify-between border-b border-line pb-2.5">
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
               Entry
             </p>
-            <p className="font-mono text-[10px] text-ink-soft">
-              {readingTime(entry.content)} min read
-            </p>
+            <p className="font-mono text-[10px] text-ink-soft">autosaved</p>
           </div>
-          <div className="ruled mt-1 min-h-0 flex-1 overflow-y-auto">
-            <p className="whitespace-pre-wrap font-serif text-[20px] font-medium leading-[46px] text-ink text-pretty">
-              {entry.content}
-            </p>
+          <div className="ruled mt-1 min-h-0 flex-1">
+            <textarea
+              value={text}
+              onChange={(e) => handleChange(e.target.value)}
+              placeholder="What stayed with you?"
+              aria-label="Page content"
+              className="h-full w-full resize-none bg-transparent font-serif text-[20px] font-medium leading-[46px] text-ink placeholder:text-ink-soft/50 focus:outline-none"
+            />
           </div>
         </div>
       </section>
@@ -953,93 +943,133 @@ function ReadView({
         <button
           onClick={onBack}
           className="grid size-11 place-items-center rounded-full bg-white/55 text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
-          aria-label="Back to today"
+          aria-label="Back to pages"
         >
           <span className="mt-0.5 block h-2.5 w-2.5 rotate-45 border-b border-r border-current" />
         </button>
         <button
-          onClick={onDelete}
+          onClick={() => {
+            if (!confirmDelete) {
+              setConfirmDelete(true);
+              return;
+            }
+            deletePage(page.id);
+            onDeleted();
+          }}
           className="ml-auto rounded-full bg-white/40 px-4 py-2 text-[12px] font-medium text-ink-soft ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-ink/10"
         >
-          Delete
+          {confirmDelete ? "Tap again to delete" : "Delete page"}
         </button>
       </div>
     </>
   );
 }
 
-function EntriesList({
-  entries,
+function PagesList({
+  pages,
   onOpen,
-  onToday,
+  onCreate,
 }: {
-  entries: DiaryEntry[];
-  onOpen: (e: DiaryEntry) => void;
-  onToday: () => void;
+  pages: DiaryPage[];
+  onOpen: (id: string) => void;
+  onCreate: (title: string) => void;
 }) {
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (adding) inputRef.current?.focus();
+  }, [adding]);
+
   return (
     <>
       <PageTitle
-        eyebrow="Archive"
-        title="Past entries"
-        meta={`${entries.length}`}
+        eyebrow="Diary"
+        title="Your pages"
+        meta={`${pages.length}`}
       />
 
+      {adding ? (
+        <form
+          className="mt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onCreate(title);
+            setTitle("");
+            setAdding(false);
+          }}
+        >
+          <div className="glass flex items-center gap-2 rounded-[16px] p-2 pl-4 ring-1 ring-white/70">
+            <input
+              ref={inputRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={`Page title — e.g. ${prettyDate(todayKey())}`}
+              aria-label="New page title"
+              className="min-w-0 flex-1 bg-transparent font-serif text-[17px] font-medium text-ink placeholder:text-ink-soft/50 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+            >
+              Create
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className="mt-4 w-full rounded-[16px] bg-ink py-3.5 font-sans text-[14px] font-medium text-vellum transition-opacity active:opacity-80"
+        >
+          + New page
+        </button>
+      )}
+
       <section className="mt-4 flex-1 min-h-0 overflow-y-auto pb-2">
-        {entries.length === 0 ? (
+        {pages.length === 0 ? (
           <EmptyCard
-            title="No entries yet"
-            body="Your diary is empty and waiting. Write your first page whenever you're ready."
+            title="No pages yet"
+            body="Make a page for anything — work, travel, a quiet thought. Each one keeps its own title and dates."
           />
         ) : (
           <div className="space-y-2.5">
-            {entries.map((e) => (
+            {pages.map((p) => (
               <button
-                key={e.id}
-                onClick={() => onOpen(e)}
+                key={p.id}
+                onClick={() => onOpen(p.id)}
                 className="glass w-full rounded-[16px] p-4 text-left ring-1 ring-white/70 transition-transform active:scale-[0.99]"
               >
-                <div className="flex items-center justify-between">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
-                    {shortDate(e.date)}
-                  </p>
-                  <p className="font-mono text-[10px] text-ink-soft">{e.time}</p>
-                </div>
-                <p className="mt-1.5 font-serif text-[17px] font-semibold leading-snug text-ink line-clamp-1">
-                  {e.content}
+                <p className="font-serif text-[18px] font-semibold leading-snug text-ink line-clamp-1">
+                  {p.title}
                 </p>
                 <p className="mt-1 font-sans text-[13px] leading-relaxed text-ink-soft line-clamp-2">
-                  {e.content}
+                  {p.content.trim() || "Empty page"}
+                </p>
+                <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-soft">
+                  Updated {stamp(p.updatedAt)} · Started {stamp(p.createdAt)}
                 </p>
               </button>
             ))}
           </div>
         )}
       </section>
-
-      <div className="mt-3 flex justify-center">
-        <button
-          onClick={onToday}
-          className="rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
-        >
-          Write today&apos;s page
-        </button>
-      </div>
     </>
   );
 }
 
+
 function BottomNav({
   tab,
   taskBadge,
-  onToday,
+  onDiary,
   onLog,
   onTasks,
   onFriend,
 }: {
-  tab: "today" | "log" | "tasks" | "friend";
+  tab: "diary" | "log" | "tasks" | "friend";
   taskBadge: number;
-  onToday: () => void;
+  onDiary: () => void;
   onLog: () => void;
   onTasks: () => void;
   onFriend: () => void;
@@ -1053,7 +1083,7 @@ function BottomNav({
 
   return (
     <nav className="glass mt-3 flex items-center gap-1 rounded-full p-1 ring-1 ring-white/70">
-      <button onClick={onToday} className={item(tab === "today")}>
+      <button onClick={onDiary} className={item(tab === "diary")}>
         Diary
       </button>
       <button onClick={onLog} className={item(tab === "log")}>

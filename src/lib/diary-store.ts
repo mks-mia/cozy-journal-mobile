@@ -294,6 +294,7 @@ export function exportData(): string {
     {
       exportedAt: new Date().toISOString(),
       name: getUserName(),
+      pages: loadPages(),
       entries: loadEntries(),
       logs: loadLogs(),
       tasks: loadTasks(),
@@ -305,11 +306,133 @@ export function exportData(): string {
 
 export function clearAllData() {
   if (typeof window === "undefined") return;
-  for (const key of [STORAGE_KEY, LOG_KEY, TASK_KEY, REMINDER_KEY, NAME_KEY]) {
+  for (const key of [
+    STORAGE_KEY,
+    LOG_KEY,
+    TASK_KEY,
+    REMINDER_KEY,
+    NAME_KEY,
+    PAGE_KEY,
+    PAGE_MIGRATION_KEY,
+  ]) {
     try {
       window.localStorage.removeItem(key);
     } catch {
       // ignore
     }
   }
+}
+
+
+
+/* --------------------------------- pages ---------------------------------- */
+
+export type DiaryPage = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const PAGE_KEY = "lamplit.diary.pages.v1";
+const PAGE_MIGRATION_KEY = "lamplit.diary.pagesMigrated.v1";
+
+function loadPages(): DiaryPage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const pages: DiaryPage[] = Array.isArray(parsed) ? parsed : [];
+    return migratePages(pages);
+  } catch {
+    return [];
+  }
+}
+
+function migratePages(pages: DiaryPage[]): DiaryPage[] {
+  try {
+    if (window.localStorage.getItem(PAGE_MIGRATION_KEY)) return pages;
+    const legacy = loadEntries();
+    const converted: DiaryPage[] = legacy.map((e) => ({
+      id: `page-${e.id}`,
+      title: prettyDate(e.date),
+      content: e.content,
+      createdAt: e.createdAt,
+      updatedAt: e.createdAt,
+    }));
+    const merged = [...pages, ...converted];
+    window.localStorage.setItem(PAGE_KEY, JSON.stringify(merged));
+    window.localStorage.setItem(PAGE_MIGRATION_KEY, "1");
+    return merged;
+  } catch {
+    return pages;
+  }
+}
+
+function savePages(pages: DiaryPage[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PAGE_KEY, JSON.stringify(pages));
+  } catch {
+    // ignore
+  }
+}
+
+export function getPages(): DiaryPage[] {
+  return loadPages().sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export function getPage(id: string): DiaryPage | undefined {
+  return loadPages().find((p) => p.id === id);
+}
+
+export function createPage(title: string): DiaryPage {
+  const pages = loadPages();
+  const now = Date.now();
+  const page: DiaryPage = {
+    id: `page-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    title: title.trim() || prettyDate(todayKey()),
+    content: "",
+    createdAt: now,
+    updatedAt: now,
+  };
+  pages.push(page);
+  savePages(pages);
+  return page;
+}
+
+export function updatePage(id: string, content: string): DiaryPage | undefined {
+  let saved: DiaryPage | undefined;
+  const pages = loadPages().map((p) => {
+    if (p.id !== id) return p;
+    saved = { ...p, content, updatedAt: Date.now() };
+    return saved;
+  });
+  savePages(pages);
+  return saved;
+}
+
+export function renamePage(id: string, title: string) {
+  const clean = title.trim();
+  const pages = loadPages().map((p) =>
+    p.id === id
+      ? { ...p, title: clean || prettyDate(todayKey()), updatedAt: Date.now() }
+      : p,
+  );
+  savePages(pages);
+}
+
+export function deletePage(id: string) {
+  savePages(loadPages().filter((p) => p.id !== id));
+}
+
+export function stamp(ts: number): string {
+  const d = new Date(ts);
+  const time = `${String(d.getHours()).padStart(2, "0")} : ${String(
+    d.getMinutes(),
+  ).padStart(2, "0")}`;
+  const key = formatDateKey(d);
+  if (key === todayKey()) return `Today, ${time}`;
+  return `${shortDate(key)}, ${time}`;
 }
