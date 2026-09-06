@@ -365,7 +365,7 @@ function LogView({ onChanged }: { onChanged: () => void }) {
       <PageTitle
         eyebrow="Daily log"
         title={date === today ? "Today" : shortDate(date)}
-        meta={trackers.length > 0 ? `${done}/${trackers.length} done` : undefined}
+        meta={`${done}/${trackers.length} done`}
       />
 
       <div className="mt-3 flex items-center justify-between gap-2">
