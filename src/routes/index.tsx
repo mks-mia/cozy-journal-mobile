@@ -93,7 +93,6 @@ function DiaryApp() {
   const buckets = bucketTasks(tasks, now);
   const dueSoonCount = buckets.overdue.length + buckets.today.length;
 
-
   // Tick every minute so relative labels and reminders stay current.
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
@@ -112,16 +111,13 @@ function DiaryApp() {
     if (pending.length === 0) return;
     for (const { task, threshold } of pending) {
       try {
-        new Notification(
-          threshold === "due" ? "Deadline reached" : "Deadline coming up",
-          {
-            body:
-              threshold === "due"
-                ? `${task.title} — due now`
-                : `${task.title} — ${relativeDue(task.dueAt!, now)}`,
-            tag: `${task.id}-${threshold}`,
-          },
-        );
+        new Notification(threshold === "due" ? "Deadline reached" : "Deadline coming up", {
+          body:
+            threshold === "due"
+              ? `${task.title} — due now`
+              : `${task.title} — ${relativeDue(task.dueAt!, now)}`,
+          tag: `${task.id}-${threshold}`,
+        });
       } catch {
         // notification blocked — in-app banner still covers it
       }
@@ -156,13 +152,7 @@ function DiaryApp() {
   }
 
   const tab: "diary" | "log" | "tasks" | "friend" =
-    view === "log"
-      ? "log"
-      : view === "tasks"
-        ? "tasks"
-        : view === "friend"
-          ? "friend"
-          : "diary";
+    view === "log" ? "log" : view === "tasks" ? "tasks" : view === "friend" ? "friend" : "diary";
 
   const open = openId ? getPage(openId) : undefined;
 
@@ -176,11 +166,7 @@ function DiaryApp() {
       />
 
       <div className="relative z-10 flex min-h-dvh flex-col px-5 pb-4 pt-5">
-        <Header
-          name={name}
-          onHome={() => go("pages")}
-          onSettings={() => go("settings")}
-        />
+        <Header name={name} onHome={() => go("pages")} onSettings={() => go("settings")} />
 
         {!bannerDismissed && dueSoonCount > 0 && view !== "tasks" && (
           <DueBanner
@@ -235,7 +221,6 @@ function DiaryApp() {
           onTasks={() => go("tasks")}
           onFriend={() => go("friend")}
         />
-
       </div>
     </div>
   );
@@ -261,9 +246,7 @@ function Header({
           L
         </span>
         <span className="leading-tight">
-          <span className="block font-serif text-[19px] font-semibold tracking-tight">
-            Lamplit
-          </span>
+          <span className="block font-serif text-[19px] font-semibold tracking-tight">Lamplit</span>
           <span className="block max-w-[150px] truncate font-mono text-[9px] uppercase tracking-[0.22em] text-ink-soft">
             {name}&apos;s diary
           </span>
@@ -304,9 +287,7 @@ function DueBanner({
     <div className="glass mt-3 flex items-center gap-3 rounded-[14px] px-4 py-3 ring-1 ring-lamplight/40">
       <span className="block size-2 shrink-0 rounded-full bg-lamplight" />
       <button onClick={onOpen} className="flex-1 text-left">
-        <p className="font-sans text-[13px] font-medium text-ink">
-          {parts.join(" · ")}
-        </p>
+        <p className="font-sans text-[13px] font-medium text-ink">{parts.join(" · ")}</p>
         <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-soft">
           tap to open tasks
         </p>
@@ -322,27 +303,15 @@ function DueBanner({
   );
 }
 
-function PageTitle({
-  eyebrow,
-  title,
-  meta,
-}: {
-  eyebrow: string;
-  title: string;
-  meta?: string;
-}) {
+function PageTitle({ eyebrow, title, meta }: { eyebrow: string; title: string; meta?: string }) {
   return (
     <section className="mt-5 animate-fade-up">
-      <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-lamplight">
-        {eyebrow}
-      </p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-lamplight">{eyebrow}</p>
       <div className="mt-1.5 flex flex-wrap items-end justify-between gap-2">
         <h1 className="font-serif text-[32px] font-semibold leading-none tracking-tight text-balance">
           {title}
         </h1>
-        {meta && (
-          <p className="font-mono text-[11px] text-ink-soft">{meta}</p>
-        )}
+        {meta && <p className="font-mono text-[11px] text-ink-soft">{meta}</p>}
       </div>
     </section>
   );
@@ -372,11 +341,7 @@ function LogView({ onChanged }: { onChanged: () => void }) {
 
   return (
     <>
-      <PageTitle
-        eyebrow="Daily log"
-        title="What happened"
-        meta={`${logs.length}`}
-      />
+      <PageTitle eyebrow="Daily log" title="What happened" meta={`${logs.length}`} />
 
       <form
         className="mt-4"
@@ -524,24 +489,9 @@ function TasksView({
           />
         ) : (
           <div className="space-y-4">
-            <TaskGroup
-              label="Overdue"
-              tasks={buckets.overdue}
-              now={now}
-              onChanged={onChanged}
-            />
-            <TaskGroup
-              label="Today"
-              tasks={buckets.today}
-              now={now}
-              onChanged={onChanged}
-            />
-            <TaskGroup
-              label="Upcoming"
-              tasks={buckets.upcoming}
-              now={now}
-              onChanged={onChanged}
-            />
+            <TaskGroup label="Overdue" tasks={buckets.overdue} now={now} onChanged={onChanged} />
+            <TaskGroup label="Today" tasks={buckets.today} now={now} onChanged={onChanged} />
+            <TaskGroup label="Upcoming" tasks={buckets.upcoming} now={now} onChanged={onChanged} />
             <TaskGroup
               label="No deadline"
               tasks={buckets.someday}
@@ -560,12 +510,7 @@ function TasksView({
                 {showDone && (
                   <div className="mt-2 space-y-2">
                     {buckets.done.map((t) => (
-                      <TaskRow
-                        key={t.id}
-                        task={t}
-                        now={now}
-                        onChanged={onChanged}
-                      />
+                      <TaskRow key={t.id} task={t} now={now} onChanged={onChanged} />
                     ))}
                   </div>
                 )}
@@ -592,9 +537,7 @@ function TaskGroup({
   if (tasks.length === 0) return null;
   return (
     <div>
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
-        {label}
-      </p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">{label}</p>
       <div className="mt-2 space-y-2">
         {tasks.map((t) => (
           <TaskRow key={t.id} task={t} now={now} onChanged={onChanged} />
@@ -604,15 +547,7 @@ function TaskGroup({
   );
 }
 
-function TaskRow({
-  task,
-  now,
-  onChanged,
-}: {
-  task: Task;
-  now: number;
-  onChanged: () => void;
-}) {
+function TaskRow({ task, now, onChanged }: { task: Task; now: number; onChanged: () => void }) {
   const level = urgency(task, now);
   const ring =
     level === "overdue"
@@ -621,11 +556,7 @@ function TaskRow({
         ? "ring-1 ring-lamplight/50"
         : "ring-1 ring-white/70";
   const dueColor =
-    level === "overdue"
-      ? "text-alert"
-      : level === "soon"
-        ? "text-lamplight"
-        : "text-ink-soft";
+    level === "overdue" ? "text-alert" : level === "soon" ? "text-lamplight" : "text-ink-soft";
 
   return (
     <div className={`glass flex items-start gap-3 rounded-[14px] px-4 py-3 ${ring}`}>
@@ -760,9 +691,9 @@ function SettingsView({
             Deadline reminders
           </p>
           <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-soft">
-            In-app reminders always work: due and overdue tasks show a banner and
-            a badge whenever you open Lamplit. You can also allow device
-            notifications for a nudge an hour before each deadline.
+            In-app reminders always work: due and overdue tasks show a banner and a badge whenever
+            you open Lamplit. You can also allow device notifications for a nudge an hour before
+            each deadline.
           </p>
           {permission === "granted" && enabled ? (
             <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
@@ -785,10 +716,9 @@ function SettingsView({
             </button>
           )}
           <p className="mt-3 font-sans text-[12px] leading-relaxed text-ink-soft">
-            Because everything stays on your device with no account or server,
-            notifications can only fire while Lamplit is open or recently used —
-            iPhone home-screen apps in particular won&apos;t wake it in the
-            background. The in-app banner is the reliable layer.
+            Because everything stays on your device with no account or server, notifications can
+            only fire while Lamplit is open or recently used — iPhone home-screen apps in particular
+            won&apos;t wake it in the background. The in-app banner is the reliable layer.
           </p>
         </div>
 
@@ -797,9 +727,8 @@ function SettingsView({
             Your data
           </p>
           <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-soft">
-            Entries, logs and tasks live only in this device&apos;s storage — no
-            login, no cloud. Clearing your browser or switching phone loses them,
-            so keep a backup.
+            Entries, logs and tasks live only in this device&apos;s storage — no login, no cloud.
+            Clearing your browser or switching phone loses them, so keep a backup.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -846,9 +775,7 @@ function EmptyCard({ title, body }: { title: string; body: string }) {
   return (
     <div className="glass mt-2 rounded-[16px] p-6 text-center ring-1 ring-white/70">
       <p className="font-serif text-[20px] font-semibold text-ink">{title}</p>
-      <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-soft">
-        {body}
-      </p>
+      <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-soft">{body}</p>
     </div>
   );
 }
@@ -922,9 +849,7 @@ function PageView({
       <section className="mt-3 flex-1 min-h-0">
         <div className="glass flex h-full min-h-[38vh] flex-col overflow-hidden rounded-[20px] p-5 ring-1 ring-white/70">
           <div className="flex items-center justify-between border-b border-line pb-2.5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
-              Entry
-            </p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">Entry</p>
             <p className="font-mono text-[10px] text-ink-soft">autosaved</p>
           </div>
           <div className="ruled mt-1 min-h-0 flex-1">
@@ -984,11 +909,7 @@ function PagesList({
 
   return (
     <>
-      <PageTitle
-        eyebrow="Diary"
-        title="Your pages"
-        meta={`${pages.length}`}
-      />
+      <PageTitle eyebrow="Diary" title="Your pages" meta={`${pages.length}`} />
 
       {adding ? (
         <form
@@ -1058,7 +979,6 @@ function PagesList({
   );
 }
 
-
 function BottomNav({
   tab,
   taskBadge,
@@ -1076,9 +996,7 @@ function BottomNav({
 }) {
   const item = (active: boolean) =>
     `relative flex-1 rounded-full py-2.5 text-center font-sans text-[13px] font-medium transition-colors ${
-      active
-        ? "bg-ink text-vellum"
-        : "text-ink-soft hover:bg-white/60"
+      active ? "bg-ink text-vellum" : "text-ink-soft hover:bg-white/60"
     }`;
 
   return (
@@ -1137,8 +1055,8 @@ function WelcomeScreen({ onDone }: { onDone: (name: string) => void }) {
           waiting for a name.
         </h1>
         <p className="mt-4 max-w-xs font-sans text-[15px] leading-relaxed text-ink-soft animate-fade-up">
-          Everything stays on this device. Just tell us who you are and we&apos;ll
-          set the page for you.
+          Everything stays on this device. Just tell us who you are and we&apos;ll set the page for
+          you.
         </p>
 
         <form

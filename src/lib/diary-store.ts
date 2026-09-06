@@ -323,8 +323,6 @@ export function clearAllData() {
   }
 }
 
-
-
 /* --------------------------------- pages ---------------------------------- */
 
 export type DiaryPage = {
@@ -416,9 +414,7 @@ export function updatePage(id: string, content: string): DiaryPage | undefined {
 export function renamePage(id: string, title: string) {
   const clean = title.trim();
   const pages = loadPages().map((p) =>
-    p.id === id
-      ? { ...p, title: clean || prettyDate(todayKey()), updatedAt: Date.now() }
-      : p,
+    p.id === id ? { ...p, title: clean || prettyDate(todayKey()), updatedAt: Date.now() } : p,
   );
   savePages(pages);
 }
@@ -429,9 +425,10 @@ export function deletePage(id: string) {
 
 export function stamp(ts: number): string {
   const d = new Date(ts);
-  const time = `${String(d.getHours()).padStart(2, "0")} : ${String(
-    d.getMinutes(),
-  ).padStart(2, "0")}`;
+  const time = `${String(d.getHours()).padStart(2, "0")} : ${String(d.getMinutes()).padStart(
+    2,
+    "0",
+  )}`;
   const key = formatDateKey(d);
   if (key === todayKey()) return `Today, ${time}`;
   return `${shortDate(key)}, ${time}`;
