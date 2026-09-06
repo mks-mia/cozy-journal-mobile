@@ -16,6 +16,14 @@ import {
   getLogs,
   addLog,
   deleteLog,
+  getTrackers,
+  addTracker,
+  deleteTracker,
+  getProgressFor,
+  getProgressMap,
+  bumpProgress,
+  shiftDateKey,
+  lastDays,
   getTasks,
   addTask,
   toggleTask,
@@ -319,101 +327,272 @@ function PageTitle({ eyebrow, title, meta }: { eyebrow: string; title: string; m
 
 function LogView({ onChanged }: { onChanged: () => void }) {
   const [text, setText] = useState("");
-  const logs = getLogs();
+  const [date, setDate] = useState(() => todayKey());
+  const [addingTracker, setAddingTracker] = useState(false);
+  const [tName, setTName] = useState("");
+  const [tTarget, setTTarget] = useState("");
+  const [tUnit, setTUnit] = useState("");
+
+  const today = todayKey();
+  const logs = getLogs().filter((l) => l.date === date);
+  const trackers = getTrackers();
+  const progress = getProgressFor(date);
+  const week = lastDays(date, 7);
+  const progressMap = getProgressMap();
   const canAdd = text.trim().length > 0;
 
   const submit = () => {
     if (!canAdd) return;
-    addLog(text.trim());
+    addLog(text.trim(), date);
     setText("");
     onChanged();
   };
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, LogEntry[]>();
-    for (const l of logs) {
-      const list = map.get(l.date) ?? [];
-      list.push(l);
-      map.set(l.date, list);
-    }
-    return Array.from(map.entries());
-  }, [logs]);
+  const submitTracker = () => {
+    if (!tName.trim()) return;
+    addTracker(tName.trim(), Number(tTarget) || 1, tUnit.trim());
+    setTName("");
+    setTTarget("");
+    setTUnit("");
+    setAddingTracker(false);
+    onChanged();
+  };
+
+  const done = trackers.filter((t) => (progress[t.id] ?? 0) >= t.target).length;
 
   return (
     <>
-      <PageTitle eyebrow="Daily log" title="What happened" meta={`${logs.length}`} />
+      <PageTitle
+        eyebrow="Daily log"
+        title={date === today ? "Today" : shortDate(date)}
+        meta={trackers.length > 0 ? `${done}/${trackers.length} done` : undefined}
+      />
 
-      <form
-        className="mt-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <div className="glass flex items-center gap-2 rounded-[16px] p-2 pl-4 ring-1 ring-white/70">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Anything at all…"
-            aria-label="New log item"
-            className="min-w-0 flex-1 bg-transparent font-serif text-[17px] font-medium text-ink placeholder:text-ink-soft/50 focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!canAdd}
-            className="rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum transition-opacity disabled:opacity-30"
-          >
-            Add
-          </button>
-        </div>
-      </form>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <button
+          onClick={() => setDate(shiftDateKey(date, -1))}
+          aria-label="Previous day"
+          className="glass rounded-full px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-soft ring-1 ring-white/70"
+        >
+          &larr; Prev
+        </button>
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
+          {prettyDate(date)}
+        </p>
+        <button
+          onClick={() => setDate(shiftDateKey(date, 1))}
+          disabled={date >= today}
+          aria-label="Next day"
+          className="glass rounded-full px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-soft ring-1 ring-white/70 disabled:opacity-30"
+        >
+          Next &rarr;
+        </button>
+      </div>
 
       <section className="mt-4 flex-1 min-h-0 overflow-y-auto pb-2">
-        {logs.length === 0 ? (
-          <EmptyCard
-            title="Nothing logged yet"
-            body="Jot down whatever the day brings — a thought, a task done, a small moment. Each item is stamped with the time."
-          />
-        ) : (
-          <div className="space-y-4">
-            {grouped.map(([date, items]) => (
-              <div key={date}>
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
-                  {date === todayKey() ? "Today" : shortDate(date)}
-                </p>
-                <div className="mt-2 space-y-2">
-                  {items.map((l) => (
-                    <div
-                      key={l.id}
-                      className="glass flex items-start gap-3 rounded-[14px] px-4 py-3 ring-1 ring-white/70"
-                    >
-                      <p className="mt-[3px] shrink-0 font-mono text-[10px] text-ink-soft">
-                        {l.time}
-                      </p>
-                      <p className="flex-1 whitespace-pre-wrap font-serif text-[16px] font-medium leading-snug text-ink">
-                        {l.content}
-                      </p>
-                      <button
-                        onClick={() => {
-                          deleteLog(l.id);
-                          onChanged();
-                        }}
-                        className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft"
-                        aria-label={`Delete log ${l.content}`}
-                      >
-                        Del
-                      </button>
-                    </div>
-                  ))}
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight">
+          Tracked actions
+        </p>
+
+        <div className="mt-2 space-y-2">
+          {trackers.length === 0 && !addingTracker && (
+            <p className="font-sans text-[13px] leading-relaxed text-ink-soft">
+              Add something you want to keep up daily — water glasses, pages read, minutes walked —
+              and count it off each day.
+            </p>
+          )}
+
+          {trackers.map((t) => {
+            const value = progress[t.id] ?? 0;
+            const pct = Math.min(100, Math.round((value / t.target) * 100));
+            return (
+              <div key={t.id} className="glass rounded-[14px] px-4 py-3 ring-1 ring-white/70">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-serif text-[16px] font-semibold text-ink">
+                      {t.name}
+                    </p>
+                    <p className="font-mono text-[10px] text-ink-soft">
+                      {value} / {t.target}
+                      {t.unit ? ` ${t.unit}` : ""} · {pct}%
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      bumpProgress(date, t.id, -1);
+                      onChanged();
+                    }}
+                    aria-label={`Remove one from ${t.name}`}
+                    className="grid size-8 place-items-center rounded-full bg-white/70 font-sans text-[16px] text-ink ring-1 ring-ink/10"
+                  >
+                    &minus;
+                  </button>
+                  <button
+                    onClick={() => {
+                      bumpProgress(date, t.id, 1);
+                      onChanged();
+                    }}
+                    aria-label={`Add one to ${t.name}`}
+                    className="grid size-8 place-items-center rounded-full bg-ink font-sans text-[16px] text-vellum"
+                  >
+                    +
+                  </button>
                 </div>
+
+                <div className="mt-2.5 h-[6px] overflow-hidden rounded-full bg-ink/10">
+                  <div
+                    className="h-full rounded-full bg-lamplight transition-[width] duration-300"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+
+                <div className="mt-2.5 flex items-end justify-between gap-1">
+                  {week.map((d) => {
+                    const v = progressMap[d]?.[t.id] ?? 0;
+                    const h = Math.max(3, Math.min(24, Math.round((v / t.target) * 24)));
+                    return (
+                      <span key={d} className="flex flex-1 flex-col items-center gap-1">
+                        <span
+                          className={`block w-full rounded-[3px] ${
+                            v >= t.target ? "bg-lamplight" : "bg-ink/20"
+                          }`}
+                          style={{ height: `${h}px` }}
+                          title={`${shortDate(d)}: ${v}`}
+                        />
+                        <span className="font-mono text-[8px] text-ink-soft">
+                          {shortDate(d).slice(0, 2)}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => {
+                    deleteTracker(t.id);
+                    onChanged();
+                  }}
+                  className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-soft"
+                  aria-label={`Delete tracker ${t.name}`}
+                >
+                  Remove action
+                </button>
               </div>
-            ))}
+            );
+          })}
+
+          {addingTracker ? (
+            <form
+              className="glass rounded-[14px] p-3 ring-1 ring-white/70"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitTracker();
+              }}
+            >
+              <input
+                value={tName}
+                onChange={(e) => setTName(e.target.value)}
+                placeholder="Action — e.g. Drink water"
+                aria-label="Action name"
+                className="w-full bg-transparent px-1 font-serif text-[16px] font-medium text-ink placeholder:text-ink-soft/50 focus:outline-none"
+              />
+              <div className="mt-2.5 flex items-center gap-2 border-t border-line pt-2.5">
+                <input
+                  value={tTarget}
+                  onChange={(e) => setTTarget(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="8"
+                  aria-label="Daily target"
+                  className="w-14 bg-transparent px-1 font-mono text-[12px] text-ink placeholder:text-ink-soft/50 focus:outline-none"
+                />
+                <input
+                  value={tUnit}
+                  onChange={(e) => setTUnit(e.target.value)}
+                  placeholder="glasses"
+                  aria-label="Unit (optional)"
+                  className="min-w-0 flex-1 bg-transparent px-1 font-mono text-[12px] text-ink placeholder:text-ink-soft/50 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-vellum"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              onClick={() => setAddingTracker(true)}
+              className="glass w-full rounded-[14px] px-4 py-3 text-left font-mono text-[11px] uppercase tracking-[0.16em] text-ink-soft ring-1 ring-white/70"
+            >
+              + Track a daily action
+            </button>
+          )}
+        </div>
+
+        <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight">
+          Notes
+        </p>
+
+        <form
+          className="mt-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <div className="glass flex items-center gap-2 rounded-[16px] p-2 pl-4 ring-1 ring-white/70">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Anything at all…"
+              aria-label="New log item"
+              className="min-w-0 flex-1 bg-transparent font-serif text-[17px] font-medium text-ink placeholder:text-ink-soft/50 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!canAdd}
+              className="rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum transition-opacity disabled:opacity-30"
+            >
+              Add
+            </button>
           </div>
-        )}
+        </form>
+
+        <div className="mt-3 space-y-2">
+          {logs.length === 0 ? (
+            <p className="font-sans text-[13px] leading-relaxed text-ink-soft">
+              Nothing logged on this day yet.
+            </p>
+          ) : (
+            logs.map((l) => (
+              <div
+                key={l.id}
+                className="glass flex items-start gap-3 rounded-[14px] px-4 py-3 ring-1 ring-white/70"
+              >
+                <p className="mt-[3px] shrink-0 font-mono text-[10px] text-ink-soft">{l.time}</p>
+                <p className="flex-1 whitespace-pre-wrap font-serif text-[16px] font-medium leading-snug text-ink">
+                  {l.content}
+                </p>
+                <button
+                  onClick={() => {
+                    deleteLog(l.id);
+                    onChanged();
+                  }}
+                  className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft"
+                  aria-label={`Delete log ${l.content}`}
+                >
+                  Del
+                </button>
+              </div>
+            ))
+          )}
+        </div>
       </section>
     </>
   );
 }
+
 
 function TasksView({
   now,
