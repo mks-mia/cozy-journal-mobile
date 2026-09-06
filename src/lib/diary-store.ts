@@ -433,3 +433,105 @@ export function stamp(ts: number): string {
   if (key === todayKey()) return `Today, ${time}`;
   return `${shortDate(key)}, ${time}`;
 }
+
+/* -------------------------------- trackers -------------------------------- */
+
+export type Tracker = {
+  id: string;
+  name: string;
+  unit: string;
+  target: number;
+  createdAt: number;
+};
+
+export type ProgressMap = Record<string, Record<string, number>>;
+
+const TRACKER_KEY = "lamplit.diary.trackers.v1";
+const PROGRESS_KEY = "lamplit.diary.trackerProgress.v1";
+
+function readJSON<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJSON(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+}
+
+export function getTrackers(): Tracker[] {
+  const list = readJSON<Tracker[]>(TRACKER_KEY, []);
+  return Array.isArray(list) ? list : [];
+}
+
+export function addTracker(name: string, target: number, unit: string): Tracker {
+  const trackers = getTrackers();
+  const tracker: Tracker = {
+    id: `trk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: name.trim(),
+    unit: unit.trim(),
+    target: Math.max(1, Math.round(target) || 1),
+    createdAt: Date.now(),
+  };
+  trackers.push(tracker);
+  writeJSON(TRACKER_KEY, trackers);
+  return tracker;
+}
+
+export function deleteTracker(id: string) {
+  writeJSON(
+    TRACKER_KEY,
+    getTrackers().filter((t) => t.id !== id),
+  );
+  const progress = getProgressMap();
+  for (const date of Object.keys(progress)) {
+    if (progress[date] && id in progress[date]) delete progress[date][id];
+  }
+  writeJSON(PROGRESS_KEY, progress);
+}
+
+export function getProgressMap(): ProgressMap {
+  const map = readJSON<ProgressMap>(PROGRESS_KEY, {});
+  return map && typeof map === "object" ? map : {};
+}
+
+export function getProgressFor(date: string): Record<string, number> {
+  return getProgressMap()[date] ?? {};
+}
+
+export function setProgress(date: string, trackerId: string, value: number) {
+  const map = getProgressMap();
+  const day = { ...(map[date] ?? {}) };
+  const next = Math.max(0, Math.round(value));
+  if (next === 0) delete day[trackerId];
+  else day[trackerId] = next;
+  map[date] = day;
+  writeJSON(PROGRESS_KEY, map);
+}
+
+export function bumpProgress(date: string, trackerId: string, delta: number) {
+  const current = getProgressFor(date)[trackerId] ?? 0;
+  setProgress(date, trackerId, current + delta);
+}
+
+export function shiftDateKey(dateKey: string, days: number): string {
+  const d = new Date(dateKey + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return formatDateKey(d);
+}
+
+export function lastDays(dateKey: string, count: number): string[] {
+  const out: string[] = [];
+  for (let i = count - 1; i >= 0; i--) out.push(shiftDateKey(dateKey, -i));
+  return out;
+}
