@@ -593,7 +593,6 @@ function LogView({ onChanged }: { onChanged: () => void }) {
   );
 }
 
-
 function TasksView({
   now,
   buckets,
