@@ -120,11 +120,11 @@ export function getLogs(): LogEntry[] {
   return loadLogs().sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function addLog(content: string): LogEntry {
+export function addLog(content: string, date?: string): LogEntry {
   const logs = loadLogs();
   const entry: LogEntry = {
-    id: `log-${Date.now()}`,
-    date: todayKey(),
+    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    date: date ?? todayKey(),
     time: formatNow(),
     content,
     createdAt: Date.now(),
@@ -298,6 +298,8 @@ export function exportData(): string {
       entries: loadEntries(),
       logs: loadLogs(),
       tasks: loadTasks(),
+      trackers: getTrackers(),
+      trackerProgress: getProgressMap(),
     },
     null,
     2,
@@ -314,6 +316,8 @@ export function clearAllData() {
     NAME_KEY,
     PAGE_KEY,
     PAGE_MIGRATION_KEY,
+    TRACKER_KEY,
+    PROGRESS_KEY,
   ]) {
     try {
       window.localStorage.removeItem(key);
