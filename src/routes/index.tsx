@@ -1175,21 +1175,23 @@ function BottomNav({
   onLog,
   onTasks,
   onFriend,
+  onStats,
 }: {
-  tab: "diary" | "log" | "tasks" | "friend";
+  tab: "diary" | "log" | "tasks" | "friend" | "stats";
   taskBadge: number;
   onDiary: () => void;
   onLog: () => void;
   onTasks: () => void;
   onFriend: () => void;
+  onStats: () => void;
 }) {
   const item = (active: boolean) =>
-    `relative flex-1 rounded-full py-2.5 text-center font-sans text-[13px] font-medium transition-colors ${
+    `relative flex-1 rounded-full py-2.5 text-center font-sans text-[12px] font-medium transition-colors ${
       active ? "bg-ink text-vellum" : "text-ink-soft hover:bg-white/60"
     }`;
 
   return (
-    <nav className="glass mt-3 flex items-center gap-1 rounded-full p-1 ring-1 ring-white/70">
+    <nav className="glass mt-3 flex items-center gap-0.5 rounded-full p-1 ring-1 ring-white/70">
       <button onClick={onDiary} className={item(tab === "diary")}>
         Diary
       </button>
@@ -1200,7 +1202,7 @@ function BottomNav({
         Tasks
         {taskBadge > 0 && (
           <span
-            className={`ml-1.5 font-mono text-[10px] ${
+            className={`ml-1 font-mono text-[10px] ${
               tab === "tasks" ? "text-vellum/70" : "text-lamplight"
             }`}
           >
@@ -1211,7 +1213,149 @@ function BottomNav({
       <button onClick={onFriend} className={item(tab === "friend")}>
         Friend
       </button>
+      <button onClick={onStats} className={item(tab === "stats")}>
+        Stats
+      </button>
     </nav>
+  );
+}
+
+/* ------------------------------- stats view ------------------------------- */
+
+function dayPct(value: number | undefined, target: number): number {
+  if (!value || target <= 0) return 0;
+  return Math.min(1, value / target);
+}
+
+function StatsView() {
+  const trackers = getTrackers();
+  const progress = getProgressMap();
+  const today = todayKey();
+  const days14 = lastDays(today, 14);
+  const days7 = lastDays(today, 7);
+  const days30 = lastDays(today, 30);
+
+  const averageOver = (trackerId: string, target: number, keys: string[]) => {
+    if (keys.length === 0) return 0;
+    const sum = keys.reduce((acc, k) => acc + dayPct(progress[k]?.[trackerId], target), 0);
+    return sum / keys.length;
+  };
+
+  const streakFor = (trackerId: string, target: number): number => {
+    let streak = 0;
+    // Today counts only if already met; otherwise start from yesterday.
+    let offset = dayPct(progress[today]?.[trackerId], target) >= 1 ? 0 : 1;
+    for (let i = 0; i < 365; i++) {
+      const key = shiftDateKey(today, -(offset + i));
+      if (dayPct(progress[key]?.[trackerId], target) >= 1) streak += 1;
+      else break;
+    }
+    return streak;
+  };
+
+  const overallToday =
+    trackers.length === 0
+      ? 0
+      : trackers.reduce((acc, t) => acc + dayPct(progress[today]?.[t.id], t.target), 0) /
+        trackers.length;
+
+  const overallWeek =
+    trackers.length === 0
+      ? 0
+      : trackers.reduce((acc, t) => acc + averageOver(t.id, t.target, days7), 0) / trackers.length;
+
+  return (
+    <>
+      <PageTitle
+        eyebrow="Progress"
+        title="How it's going"
+        meta={trackers.length > 0 ? `${trackers.length} actions` : undefined}
+      />
+
+      {trackers.length === 0 ? (
+        <section className="glass mt-6 rounded-[20px] p-5 text-center ring-1 ring-white/70">
+          <p className="font-serif text-[17px] text-ink">Nothing to measure yet</p>
+          <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-ink-soft">
+            Add a daily action from the Log tab — your progress across every day will gather here.
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="glass mt-4 flex gap-3 rounded-[20px] p-4 ring-1 ring-white/70">
+            <div className="flex-1 rounded-[14px] bg-white/50 p-3 text-center">
+              <p className="font-serif text-[26px] font-semibold leading-none text-ink">
+                {Math.round(overallToday * 100)}%
+              </p>
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
+                Today
+              </p>
+            </div>
+            <div className="flex-1 rounded-[14px] bg-white/50 p-3 text-center">
+              <p className="font-serif text-[26px] font-semibold leading-none text-ink">
+                {Math.round(overallWeek * 100)}%
+              </p>
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
+                This week
+              </p>
+            </div>
+          </section>
+
+          <section className="mt-4 space-y-3">
+            {trackers.map((t) => {
+              const todayPct = dayPct(progress[today]?.[t.id], t.target);
+              const week = averageOver(t.id, t.target, days7);
+              const month = averageOver(t.id, t.target, days30);
+              const streak = streakFor(t.id, t.target);
+              return (
+                <article
+                  key={t.id}
+                  className="glass rounded-[20px] p-4 ring-1 ring-white/70"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="font-serif text-[18px] font-semibold text-ink">{t.name}</h3>
+                    <p className="font-mono text-[11px] text-ink-soft">
+                      {progress[today]?.[t.id] ?? 0} / {t.target} {t.unit}
+                    </p>
+                  </div>
+
+                  <div className="mt-2.5 flex h-10 items-end gap-[3px]" aria-hidden>
+                    {days14.map((d) => {
+                      const p = dayPct(progress[d]?.[t.id], t.target);
+                      return (
+                        <div
+                          key={d}
+                          title={`${shortDate(d)} — ${Math.round(p * 100)}%`}
+                          className={`flex-1 rounded-sm ${p >= 1 ? "bg-lamplight" : "bg-ink/15"}`}
+                          style={{ height: `${Math.max(8, p * 100)}%` }}
+                        />
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1 text-right font-mono text-[9px] uppercase tracking-[0.14em] text-ink-soft/70">
+                    Last 14 days
+                  </p>
+
+                  <div className="mt-2 flex gap-2 font-mono text-[11px] text-ink-soft">
+                    <span className="flex-1 rounded-full bg-white/50 px-2.5 py-1 text-center">
+                      Today {Math.round(todayPct * 100)}%
+                    </span>
+                    <span className="flex-1 rounded-full bg-white/50 px-2.5 py-1 text-center">
+                      7d {Math.round(week * 100)}%
+                    </span>
+                    <span className="flex-1 rounded-full bg-white/50 px-2.5 py-1 text-center">
+                      30d {Math.round(month * 100)}%
+                    </span>
+                    <span className="flex-1 rounded-full bg-lamplight/20 px-2.5 py-1 text-center text-lamplight">
+                      {streak}d streak
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+          </section>
+        </>
+      )}
+    </>
   );
 }
 
