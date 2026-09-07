@@ -77,7 +77,7 @@ function Index() {
   return <DiaryApp />;
 }
 
-type View = "pages" | "page" | "log" | "tasks" | "friend" | "settings";
+type View = "pages" | "page" | "log" | "tasks" | "friend" | "stats" | "settings";
 
 function DiaryApp() {
   const [view, setView] = useState<View>("pages");
@@ -159,8 +159,16 @@ function DiaryApp() {
     return <WelcomeScreen onDone={handleNameSubmit} />;
   }
 
-  const tab: "diary" | "log" | "tasks" | "friend" =
-    view === "log" ? "log" : view === "tasks" ? "tasks" : view === "friend" ? "friend" : "diary";
+  const tab: "diary" | "log" | "tasks" | "friend" | "stats" =
+    view === "log"
+      ? "log"
+      : view === "tasks"
+        ? "tasks"
+        : view === "friend"
+          ? "friend"
+          : view === "stats"
+            ? "stats"
+            : "diary";
 
   const open = openId ? getPage(openId) : undefined;
 
