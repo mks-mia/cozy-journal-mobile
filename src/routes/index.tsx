@@ -1035,8 +1035,8 @@ function PageView({
         </p>
       </section>
 
-      <section className="mt-3 flex-1 min-h-0">
-        <div className="glass flex h-full min-h-[38vh] flex-col overflow-hidden rounded-[20px] p-5 ring-1 ring-white/70">
+      <section className="mt-3 flex min-h-0 flex-1 flex-col">
+        <div className="glass flex min-h-[38vh] w-full flex-1 flex-col overflow-hidden rounded-[20px] p-5 ring-1 ring-white/70">
           <div className="flex items-center justify-between border-b border-line pb-2.5">
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">Entry</p>
             <p className="font-mono text-[10px] text-ink-soft">autosaved</p>
