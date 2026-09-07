@@ -1041,13 +1041,13 @@ function PageView({
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">Entry</p>
             <p className="font-mono text-[10px] text-ink-soft">autosaved</p>
           </div>
-          <div className="ruled mt-1 min-h-0 flex-1">
+          <div className="ruled mt-1 flex min-h-0 flex-1 flex-col">
             <textarea
               value={text}
               onChange={(e) => handleChange(e.target.value)}
               placeholder="What stayed with you?"
               aria-label="Page content"
-              className="h-full w-full resize-none bg-transparent font-serif text-[20px] font-medium leading-[46px] text-ink placeholder:text-ink-soft/50 focus:outline-none"
+              className="min-h-0 w-full flex-1 resize-none bg-transparent font-serif text-[20px] font-medium leading-[46px] text-ink placeholder:text-ink-soft/50 focus:outline-none"
             />
           </div>
         </div>
