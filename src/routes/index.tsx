@@ -1307,10 +1307,7 @@ function StatsView() {
               const month = averageOver(t.id, t.target, days30);
               const streak = streakFor(t.id, t.target);
               return (
-                <article
-                  key={t.id}
-                  className="glass rounded-[20px] p-4 ring-1 ring-white/70"
-                >
+                <article key={t.id} className="glass rounded-[20px] p-4 ring-1 ring-white/70">
                   <div className="flex items-baseline justify-between gap-2">
                     <h3 className="font-serif text-[18px] font-semibold text-ink">{t.name}</h3>
                     <p className="font-mono text-[11px] text-ink-soft">
