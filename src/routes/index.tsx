@@ -1269,7 +1269,7 @@ function StatsView() {
       <PageTitle
         eyebrow="Progress"
         title="How it's going"
-        meta={trackers.length > 0 ? `${trackers.length} actions` : undefined}
+        {...(trackers.length > 0 ? { meta: `${trackers.length} actions` } : {})}
       />
 
       {trackers.length === 0 ? (
