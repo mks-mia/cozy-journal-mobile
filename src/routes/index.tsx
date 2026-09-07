@@ -199,6 +199,8 @@ function DiaryApp() {
           <TasksView now={now} buckets={buckets} onChanged={refresh} />
         ) : view === "friend" ? (
           <FriendChat name={name} />
+        ) : view === "stats" ? (
+          <StatsView />
         ) : view === "settings" ? (
           <SettingsView
             name={name}
@@ -236,6 +238,7 @@ function DiaryApp() {
           onLog={() => go("log")}
           onTasks={() => go("tasks")}
           onFriend={() => go("friend")}
+          onStats={() => go("stats")}
         />
       </div>
     </div>
