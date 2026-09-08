@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarIcon } from "lucide-react";
 import {
   getPages,
   getPage,
@@ -12,6 +13,7 @@ import {
   todayKey,
   prettyDate,
   shortDate,
+  formatDateKey,
   getUserName,
   saveUserName,
   getLogs,
@@ -48,6 +50,9 @@ import {
   urgency,
 } from "../lib/reminders";
 import { FriendChat } from "../components/friend-chat";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -388,9 +393,33 @@ function LogView({ onChanged }: { onChanged: () => void }) {
         >
           &larr; Prev
         </button>
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
-          {prettyDate(date)}
-        </p>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              aria-label="Pick a date"
+              className="glass flex items-center gap-2 rounded-full px-4 py-2 ring-1 ring-white/70"
+            >
+              <CalendarIcon className="size-4 text-ink-soft" />
+              <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-soft">
+                {date === today ? "Today" : shortDate(date)}
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="center">
+            <Calendar
+              mode="single"
+              selected={new Date(date + "T00:00:00")}
+              onSelect={(d) => {
+                if (d) setDate(formatDateKey(d));
+              }}
+              disabled={(d) => d > new Date(today + "T00:00:00")}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+
         <button
           onClick={() => setDate(shiftDateKey(date, 1))}
           disabled={date >= today}
@@ -400,6 +429,15 @@ function LogView({ onChanged }: { onChanged: () => void }) {
           Next &rarr;
         </button>
       </div>
+
+      {date !== today && (
+        <button
+          onClick={() => setDate(today)}
+          className="mx-auto mt-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight"
+        >
+          Jump to today
+        </button>
+      )}
 
       <section className="mt-4 flex-1 min-h-0 overflow-y-auto pb-2">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight">
