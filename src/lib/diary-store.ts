@@ -338,7 +338,6 @@ export type DiaryPage = {
   fontSize?: number;
 };
 
-
 const PAGE_KEY = "lamplit.diary.pages.v1";
 const PAGE_MIGRATION_KEY = "lamplit.diary.pagesMigrated.v1";
 
@@ -429,7 +428,6 @@ export function setPageFontSize(id: string, fontSize: number): DiaryPage | undef
 }
 
 export function renamePage(id: string, title: string) {
-
   const clean = title.trim();
   const pages = loadPages().map((p) =>
     p.id === id ? { ...p, title: clean || prettyDate(todayKey()), updatedAt: Date.now() } : p,
