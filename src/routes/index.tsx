@@ -5,6 +5,8 @@ import {
   getPage,
   createPage,
   updatePage,
+  setPageFontSize,
+
   renamePage,
   deletePage,
   stamp,
