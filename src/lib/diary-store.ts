@@ -417,7 +417,19 @@ export function updatePage(id: string, content: string): DiaryPage | undefined {
   return saved;
 }
 
+export function setPageFontSize(id: string, fontSize: number): DiaryPage | undefined {
+  let saved: DiaryPage | undefined;
+  const pages = loadPages().map((p) => {
+    if (p.id !== id) return p;
+    saved = { ...p, fontSize };
+    return saved;
+  });
+  savePages(pages);
+  return saved;
+}
+
 export function renamePage(id: string, title: string) {
+
   const clean = title.trim();
   const pages = loadPages().map((p) =>
     p.id === id ? { ...p, title: clean || prettyDate(todayKey()), updatedAt: Date.now() } : p,
