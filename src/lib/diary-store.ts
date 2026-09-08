@@ -335,6 +335,7 @@ export type DiaryPage = {
   content: string;
   createdAt: number;
   updatedAt: number;
+  fontSize?: number;
 };
 
 const PAGE_KEY = "lamplit.diary.pages.v1";
@@ -409,6 +410,17 @@ export function updatePage(id: string, content: string): DiaryPage | undefined {
   const pages = loadPages().map((p) => {
     if (p.id !== id) return p;
     saved = { ...p, content, updatedAt: Date.now() };
+    return saved;
+  });
+  savePages(pages);
+  return saved;
+}
+
+export function setPageFontSize(id: string, fontSize: number): DiaryPage | undefined {
+  let saved: DiaryPage | undefined;
+  const pages = loadPages().map((p) => {
+    if (p.id !== id) return p;
+    saved = { ...p, fontSize };
     return saved;
   });
   savePages(pages);
