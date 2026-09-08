@@ -335,7 +335,9 @@ export type DiaryPage = {
   content: string;
   createdAt: number;
   updatedAt: number;
+  fontSize?: number;
 };
+
 
 const PAGE_KEY = "lamplit.diary.pages.v1";
 const PAGE_MIGRATION_KEY = "lamplit.diary.pagesMigrated.v1";
