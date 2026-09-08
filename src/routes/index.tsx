@@ -971,7 +971,58 @@ function EmptyCard({ title, body }: { title: string; body: string }) {
   );
 }
 
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Legacy pages were stored as plain text; convert them for the rich editor. */
+function toHtml(content: string) {
+  if (/<[a-z][\s\S]*>/i.test(content)) return content;
+  return escapeHtml(content).replace(/\n/g, "<br>");
+}
+
+function toPlain(content: string) {
+  return content
+    .replace(/<(br|\/p|\/div|\/li)[^>]*>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ToolButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className="grid size-8 place-items-center rounded-full bg-white/55 text-ink ring-1 ring-ink/10 transition-colors hover:bg-white/90 active:bg-ink/10"
+    >
+      {children}
+    </button>
+  );
+}
+
 function PageView({
+
   page,
   onBack,
   onChanged,
