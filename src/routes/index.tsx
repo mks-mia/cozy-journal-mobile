@@ -980,26 +980,40 @@ function PageView({
   onChanged: () => void;
   onDeleted: () => void;
 }) {
-  const [text, setText] = useState(page.content);
   const [title, setTitle] = useState(page.title);
   const [updatedAt, setUpdatedAt] = useState(page.updatedAt);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [fontSize, setFontSize] = useState(page.fontSize ?? 20);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setText(page.content);
     setTitle(page.title);
     setUpdatedAt(page.updatedAt);
+    setFontSize(page.fontSize ?? 20);
+    if (editorRef.current) editorRef.current.innerHTML = toHtml(page.content);
   }, [page.id]);
 
   const handleChange = (value: string) => {
-    setText(value);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const saved = updatePage(page.id, value);
       if (saved) setUpdatedAt(saved.updatedAt);
       onChanged();
     }, 600);
+  };
+
+  const format = (command: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false);
+    if (editorRef.current) handleChange(editorRef.current.innerHTML);
+  };
+
+  const changeSize = (next: number) => {
+    const clamped = Math.min(34, Math.max(14, next));
+    setFontSize(clamped);
+    setPageFontSize(page.id, clamped);
+    onChanged();
   };
 
   const commitTitle = () => {
@@ -1037,21 +1051,49 @@ function PageView({
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="glass flex min-h-[38vh] w-full flex-1 flex-col overflow-hidden rounded-[20px] p-5 ring-1 ring-white/70">
-          <div className="flex items-center justify-between border-b border-line pb-2.5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">Entry</p>
-            <p className="font-mono text-[10px] text-ink-soft">autosaved</p>
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line pb-2.5">
+            <ToolButton label="Bold" onClick={() => format("bold")}>
+              <span className="font-serif text-[15px] font-bold">B</span>
+            </ToolButton>
+            <ToolButton label="Italic" onClick={() => format("italic")}>
+              <span className="font-serif text-[15px] italic">I</span>
+            </ToolButton>
+            <ToolButton label="Underline" onClick={() => format("underline")}>
+              <span className="font-serif text-[15px] underline">U</span>
+            </ToolButton>
+            <ToolButton label="Bullet list" onClick={() => format("insertUnorderedList")}>
+              <span className="font-sans text-[13px]">•—</span>
+            </ToolButton>
+            <ToolButton label="Numbered list" onClick={() => format("insertOrderedList")}>
+              <span className="font-sans text-[12px]">1.</span>
+            </ToolButton>
+            <div className="ml-auto flex items-center gap-1.5">
+              <ToolButton label="Smaller text" onClick={() => changeSize(fontSize - 2)}>
+                <span className="font-serif text-[12px]">A</span>
+              </ToolButton>
+              <span className="font-mono text-[10px] text-ink-soft">{fontSize}</span>
+              <ToolButton label="Larger text" onClick={() => changeSize(fontSize + 2)}>
+                <span className="font-serif text-[17px]">A</span>
+              </ToolButton>
+            </div>
           </div>
           <div className="ruled mt-1 flex min-h-0 flex-1 flex-col">
-            <textarea
-              value={text}
-              onChange={(e) => handleChange(e.target.value)}
-              placeholder="What stayed with you?"
+            <div
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              role="textbox"
+              aria-multiline="true"
+              onInput={(e) => handleChange(e.currentTarget.innerHTML)}
+              data-placeholder="What stayed with you?"
               aria-label="Page content"
-              className="min-h-0 w-full flex-1 resize-none bg-transparent font-serif text-[20px] font-medium leading-[46px] text-ink placeholder:text-ink-soft/50 focus:outline-none"
+              style={{ fontSize: `${fontSize}px` }}
+              className="diary-editor min-h-0 w-full flex-1 overflow-y-auto bg-transparent font-serif font-medium leading-[46px] text-ink focus:outline-none"
             />
           </div>
         </div>
       </section>
+
 
       <div className="mt-3 flex items-center gap-2">
         <button
