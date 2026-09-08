@@ -1249,7 +1249,7 @@ function PagesList({
                   {p.title}
                 </p>
                 <p className="mt-1 font-sans text-[13px] leading-relaxed text-ink-soft line-clamp-2">
-                  {p.content.trim() || "Empty page"}
+                  {toPlain(p.content) || "Empty page"}
                 </p>
                 <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-soft">
                   Updated {stamp(p.updatedAt)} · Started {stamp(p.createdAt)}
