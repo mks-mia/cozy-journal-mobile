@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarIcon } from "lucide-react";
 import {
   getPages,
   getPage,
@@ -12,6 +13,7 @@ import {
   todayKey,
   prettyDate,
   shortDate,
+  formatDateKey,
   getUserName,
   saveUserName,
   getLogs,
@@ -48,6 +50,9 @@ import {
   urgency,
 } from "../lib/reminders";
 import { FriendChat } from "../components/friend-chat";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
