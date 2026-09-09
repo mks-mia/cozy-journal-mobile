@@ -34,6 +34,8 @@ import {
   markNotified,
   getReminderState,
   setReminderState,
+  dueMindfulNotification,
+  markMindfulNotified,
   exportData,
   clearAllData,
   type DiaryPage,
@@ -122,7 +124,6 @@ function DiaryApp() {
       return;
     }
     const pending = dueNotifications(getTasks(), now);
-    if (pending.length === 0) return;
     for (const { task, threshold } of pending) {
       try {
         new Notification(threshold === "due" ? "Deadline reached" : "Deadline coming up", {
@@ -137,7 +138,22 @@ function DiaryApp() {
       }
       markNotified(task.id, threshold);
     }
-    refresh();
+
+    // Fortnightly mindfulness nudge, on its own schedule from the chat one.
+    const phrase = dueMindfulNotification(now);
+    if (phrase) {
+      try {
+        new Notification("A moment of mindfulness", {
+          body: phrase,
+          tag: "lamplit-mindful",
+        });
+      } catch {
+        // notification blocked — the Friend chat still shows it
+      }
+      markMindfulNotified(now);
+    }
+
+    if (pending.length > 0) refresh();
   }, [now]);
 
   const openPage = (id: string) => {

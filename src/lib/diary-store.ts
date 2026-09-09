@@ -335,6 +335,33 @@ export function markMindfulShown(now = Date.now()) {
   }
 }
 
+const MINDFUL_NOTIFIED_KEY = "lamplit.diary.mindful.notified.v1";
+
+/**
+ * Phrase due for a device notification, tracked separately from the chat
+ * nudge so each channel keeps its own two-week rhythm.
+ */
+export function dueMindfulNotification(now = Date.now()): string | null {
+  if (typeof window === "undefined") return null;
+  let last = 0;
+  try {
+    last = Number(window.localStorage.getItem(MINDFUL_NOTIFIED_KEY) ?? 0) || 0;
+  } catch {
+    last = 0;
+  }
+  if (last === 0) return getMindfulPhrase(now);
+  return now - last >= TWO_WEEKS ? getMindfulPhrase(now) : null;
+}
+
+export function markMindfulNotified(now = Date.now()) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MINDFUL_NOTIFIED_KEY, String(now));
+  } catch {
+    // ignore
+  }
+}
+
 /* ---------------------------------- data ---------------------------------- */
 
 export function exportData(): string {
@@ -367,6 +394,7 @@ export function clearAllData() {
     TRACKER_KEY,
     PROGRESS_KEY,
     MINDFUL_KEY,
+    MINDFUL_NOTIFIED_KEY,
   ]) {
     try {
       window.localStorage.removeItem(key);
