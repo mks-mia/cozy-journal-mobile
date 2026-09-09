@@ -133,7 +133,7 @@ function ChatWindow({
     [name],
   );
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, setMessages, sendMessage, status } = useChat({
     id: sessionId,
     transport,
     onError: (e) => setError(e.message || "Something went wrong."),
@@ -144,6 +144,28 @@ function ChatWindow({
   useEffect(() => {
     inputRef.current?.focus();
   }, [sessionId]);
+
+  // Every two weeks, Lumen opens with a mindfulness / motivational thought.
+  useEffect(() => {
+    if (mindfulShownThisVisit) return;
+    const phrase = dueMindfulPhrase();
+    if (!phrase) return;
+    mindfulShownThisVisit = true;
+    markMindfulShown();
+    setMessages([
+      {
+        id: `mindful-${Date.now()}`,
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: `Something I've been sitting with${name ? `, ${name}` : ""}:\n\n${phrase}`,
+          },
+        ],
+      },
+    ]);
+    onFirstMessage("A thought for this fortnight");
+  }, [name, setMessages, onFirstMessage]);
 
   useEffect(() => {
     boxRef.current?.scrollTo({
