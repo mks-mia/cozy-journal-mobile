@@ -2,6 +2,10 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { dueMindfulPhrase, markMindfulShown } from "../lib/diary-store";
+
+let mindfulShownThisVisit = false;
+
 type Session = { id: string; title: string; createdAt: number };
 
 const newSession = (): Session => ({
