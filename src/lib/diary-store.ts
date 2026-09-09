@@ -366,6 +366,7 @@ export function clearAllData() {
     PAGE_MIGRATION_KEY,
     TRACKER_KEY,
     PROGRESS_KEY,
+    MINDFUL_KEY,
   ]) {
     try {
       window.localStorage.removeItem(key);
