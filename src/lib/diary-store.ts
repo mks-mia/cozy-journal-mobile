@@ -287,6 +287,54 @@ export function setReminderState(state: ReminderState) {
   }
 }
 
+/* ---------------------------- mindfulness nudge --------------------------- */
+
+const MINDFUL_KEY = "lamplit.diary.mindful.v1";
+const TWO_WEEKS = 14 * 24 * 60 * 60 * 1000;
+
+const MINDFUL_PHRASES = [
+  "“You do not have to be calm to be kind to yourself.” What's one small thing that steadied you this week?",
+  "“Almost everything will work again if you unplug it for a few minutes — including you.” Where could you unplug today?",
+  "“Progress is quiet.” What has quietly changed for you lately?",
+  "“Feelings are visitors. Let them come and go.” Which one has been visiting most?",
+  "“You are allowed to rest without earning it.” When did you last really rest?",
+  "“Start where you are, use what you have.” What's the next tiny step you could take?",
+  "“Breathe. You've handled harder days than this one.” What's weighing on you right now?",
+  "“Comparison is a thief.” What would enough look like for you this fortnight?",
+  "“Be gentle with yourself; you're doing the best you can with what you know.” What deserves a bit more kindness?",
+  "“Attention is the rarest form of generosity.” What's worth your full attention today?",
+];
+
+export function getMindfulPhrase(now = Date.now()): string {
+  const index = Math.floor(now / TWO_WEEKS) % MINDFUL_PHRASES.length;
+  return MINDFUL_PHRASES[index]!;
+}
+
+/** Returns a phrase when at least two weeks have passed since the last nudge. */
+export function dueMindfulPhrase(now = Date.now()): string | null {
+  if (typeof window === "undefined") return null;
+  let last = 0;
+  try {
+    last = Number(window.localStorage.getItem(MINDFUL_KEY) ?? 0) || 0;
+  } catch {
+    last = 0;
+  }
+  if (last === 0) {
+    // First ever chat: don't wait two weeks, greet with one right away.
+    return getMindfulPhrase(now);
+  }
+  return now - last >= TWO_WEEKS ? getMindfulPhrase(now) : null;
+}
+
+export function markMindfulShown(now = Date.now()) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MINDFUL_KEY, String(now));
+  } catch {
+    // ignore
+  }
+}
+
 /* ---------------------------------- data ---------------------------------- */
 
 export function exportData(): string {
