@@ -2,6 +2,10 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { dueMindfulPhrase, markMindfulShown } from "../lib/diary-store";
+
+let mindfulShownThisVisit = false;
+
 type Session = { id: string; title: string; createdAt: number };
 
 const newSession = (): Session => ({
@@ -27,9 +31,7 @@ export function FriendChat({ name }: { name: string }) {
   const titleFor = (id: string, text: string) =>
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === id && s.title === "New chat"
-          ? { ...s, title: text.slice(0, 34) }
-          : s,
+        s.id === id && s.title === "New chat" ? { ...s, title: text.slice(0, 34) } : s,
       ),
     );
 
@@ -77,9 +79,7 @@ export function FriendChat({ name }: { name: string }) {
                   setListOpen(false);
                 }}
                 className={`flex-1 truncate rounded-xl px-3 py-2 text-left text-[13px] ${
-                  s.id === activeId
-                    ? "bg-ink text-vellum"
-                    : "text-ink-soft hover:bg-white/70"
+                  s.id === activeId ? "bg-ink text-vellum" : "text-ink-soft hover:bg-white/70"
                 }`}
               >
                 {s.title}
@@ -129,7 +129,7 @@ function ChatWindow({
     [name],
   );
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, setMessages, sendMessage, status } = useChat({
     id: sessionId,
     transport,
     onError: (e) => setError(e.message || "Something went wrong."),
@@ -140,6 +140,28 @@ function ChatWindow({
   useEffect(() => {
     inputRef.current?.focus();
   }, [sessionId]);
+
+  // Every two weeks, Lumen opens with a mindfulness / motivational thought.
+  useEffect(() => {
+    if (mindfulShownThisVisit) return;
+    const phrase = dueMindfulPhrase();
+    if (!phrase) return;
+    mindfulShownThisVisit = true;
+    markMindfulShown();
+    setMessages([
+      {
+        id: `mindful-${Date.now()}`,
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: `Something I've been sitting with${name ? `, ${name}` : ""}:\n\n${phrase}`,
+          },
+        ],
+      },
+    ]);
+    onFirstMessage("A thought for this fortnight");
+  }, [name, setMessages, onFirstMessage]);
 
   useEffect(() => {
     boxRef.current?.scrollTo({
@@ -174,14 +196,10 @@ function ChatWindow({
           <Bubble key={m.id} role={m.role} text={textOf(m)} />
         ))}
 
-        {status === "submitted" && (
-          <Bubble role="assistant" text="…" />
-        )}
+        {status === "submitted" && <Bubble role="assistant" text="…" />}
 
         {error && (
-          <p className="rounded-2xl bg-alert/10 px-3 py-2 text-[12px] text-alert">
-            {error}
-          </p>
+          <p className="rounded-2xl bg-alert/10 px-3 py-2 text-[12px] text-alert">{error}</p>
         )}
       </div>
 
@@ -226,9 +244,7 @@ function Bubble({ role, text }: { role: string; text: string }) {
     <div className={mine ? "flex justify-end" : "flex justify-start"}>
       <p
         className={`max-w-[82%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed ${
-          mine
-            ? "bg-ink text-vellum"
-            : "bg-white/70 text-ink ring-1 ring-ink/5"
+          mine ? "bg-ink text-vellum" : "bg-white/70 text-ink ring-1 ring-ink/5"
         }`}
       >
         {text}
