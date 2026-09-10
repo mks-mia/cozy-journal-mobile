@@ -251,7 +251,7 @@ function linkify(text: string, mine: boolean) {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className={`underline underline-offset-2 ${mine ? "text-vellum" : "text-accent"}`}
+        className={`break-all underline underline-offset-2 ${mine ? "text-vellum" : "text-ink"}`}
       >
         {part}
       </a>
