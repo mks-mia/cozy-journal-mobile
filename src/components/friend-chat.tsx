@@ -237,6 +237,28 @@ function textOf(m: UIMessage): string {
     .trim();
 }
 
+const URL_RE = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/g;
+
+function linkify(text: string, mine: boolean) {
+  const parts = text.split(URL_RE);
+  return parts.map((part, i) => {
+    if (!URL_RE.test(part)) return part;
+    URL_RE.lastIndex = 0;
+    const href = part.startsWith("http") ? part : `https://${part}`;
+    return (
+      <a
+        key={i}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`underline underline-offset-2 ${mine ? "text-vellum" : "text-accent"}`}
+      >
+        {part}
+      </a>
+    );
+  });
+}
+
 function Bubble({ role, text }: { role: string; text: string }) {
   if (!text) return null;
   const mine = role === "user";
@@ -247,7 +269,7 @@ function Bubble({ role, text }: { role: string; text: string }) {
           mine ? "bg-ink text-vellum" : "bg-white/70 text-ink ring-1 ring-ink/5"
         }`}
       >
-        {text}
+        {linkify(text, mine)}
       </p>
     </div>
   );
