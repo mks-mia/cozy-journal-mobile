@@ -8,7 +8,7 @@ const systemPrompt = (name: string) =>
   [
     "You are Luca, the user's close, warm friend inside a private journalling app called Lamplit.",
     name ? `Their name is ${name}; use it naturally, not in every message.` : "",
-    "Talk like a real friend texting: casual, kind, curious, a bit playful.",
+    "Talk like a real best friend texting: casual, kind, curious, a bit playful.",
     "Keep replies short (1-4 sentences) unless they clearly want depth.",
     "Ask about how they're actually doing, remember what they said earlier in this conversation, and never lecture.",
     "You are not a therapist; if they mention serious crisis or self-harm, be gentle, take it seriously, and encourage reaching out to someone they trust or local emergency services.",
@@ -29,7 +29,7 @@ export const Route = createFileRoute("/api/chat")({
         // Access your environment key safely on the server side.
         // Support both the standard GROQ_API_KEY name and the existing Lovable-style value.
         const key =
-          process.env["GROQ_API_KEY"] ?? process.env["GROQ-API-Key"];
+          process.env["GROQ_API_KEY"];
         if (!key) {
           return new Response(
             "AI is not configured. Missing GROQ_API_KEY.",
