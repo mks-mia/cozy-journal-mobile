@@ -64,6 +64,7 @@ export default function Auth({ children }: { children: ReactNode }) {
 }
 
 function AuthForm() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -77,13 +78,18 @@ function AuthForm() {
     setMessage("");
 
     const { error } = isSignUp
-      ? await supabase.auth.signUp({
-          email,
-          password,
+    ? await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+            data: {
+            name,
+            },
+        },
         })
-      : await supabase.auth.signInWithPassword({
-          email,
-          password,
+    : await supabase.auth.signInWithPassword({
+        email,
+        password,
         });
 
     if (error) {
@@ -103,6 +109,15 @@ function AuthForm() {
       <h2>{isSignUp ? "Create account" : "Log in"}</h2>
 
       <form onSubmit={handleSubmit}>
+        {isSignUp && (
+        <input
+            type="text"
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+        />
+        )}
         <input
           type="email"
           placeholder="Email"

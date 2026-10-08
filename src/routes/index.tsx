@@ -55,6 +55,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import Auth from "../components/auth";
 import { useAuth } from "../components/auth";
+import { createClient } from "../lib/supabase";
+
+const supabase = createClient();
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -224,12 +227,22 @@ function DiaryApp() {
         ) : view === "settings" ? (
           <SettingsView
             name={name}
-            onRename={(value) => {
-              // handleNameSubmit(value);
+            onRename={async (value) => {
+              const { error } = await supabase.auth.updateUser({
+                data: {
+                  name: value,
+                },
+              });
+
+              if (error) {
+                console.error("Failed to update name:", error);
+                return;
+              }
+
+              refresh();
             }}
             onBack={() => go("pages")}
             onCleared={() => {
-              // setName("");
               refresh();
             }}
           />
