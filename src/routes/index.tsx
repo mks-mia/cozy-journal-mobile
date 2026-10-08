@@ -63,24 +63,30 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Lamplit — Private Diary, Daily Log & Tasks" },
+
       {
         name: "description",
         content:
-          "A calm, private space to write a little each day, log what happened, and keep deadlines in sight. Everything stays on your device.",
+          "A calm, private space to write a little each day, log what happened, and keep deadlines in sight.",
       },
+
       {
         property: "og:title",
         content: "Lamplit — Private Diary, Daily Log & Tasks",
       },
+
       {
         property: "og:description",
         content:
-          "Write your daily page, log the day as it happens, and get reminded before deadlines. Private and on-device.",
+          "Write your daily page, log the day as it happens, and get reminded before deadlines. A private space for your daily life.",
       },
+
       { property: "og:type", content: "website" },
+
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+
   component: Index,
 });
 
@@ -226,26 +232,33 @@ function DiaryApp() {
           <StatsView />
         ) : view === "settings" ? (
           <SettingsView
-            name={name}
-            onRename={async (value) => {
-              const { error } = await supabase.auth.updateUser({
-                data: {
-                  name: value,
-                },
-              });
+          name={name}
+          onRename={async (value) => {
+            const { error } = await supabase.auth.updateUser({
+              data: {
+                name: value,
+              },
+            });
 
-              if (error) {
-                console.error("Failed to update name:", error);
-                return;
-              }
+            if (error) {
+              console.error("Failed to update name:", error);
+              return;
+            }
 
-              refresh();
-            }}
-            onBack={() => go("pages")}
-            onCleared={() => {
-              refresh();
-            }}
-          />
+            refresh();
+          }}
+          onLogout={async () => {
+            const { error } = await supabase.auth.signOut();
+
+            if (error) {
+              console.error("Failed to log out:", error);
+            }
+          }}
+          onBack={() => go("pages")}
+          onCleared={() => {
+            refresh();
+          }}
+        />
         ) : view === "page" && open ? (
           <PageView
             page={open}
@@ -287,6 +300,8 @@ function Header({
   onHome: () => void;
   onSettings: () => void;
 }) {
+  const initial = name.trim().charAt(0).toUpperCase() || "U";
+
   return (
     <header className="flex items-center justify-between">
       <button
@@ -297,25 +312,39 @@ function Header({
         <span className="grid size-9 place-items-center rounded-[12px] bg-ink text-vellum font-serif text-lg">
           L
         </span>
+
         <span className="leading-tight">
-          <span className="block font-serif text-[19px] font-semibold tracking-tight">Lamplit</span>
+          <span className="block font-serif text-[19px] font-semibold tracking-tight">
+            Lamplit
+          </span>
+
           <span className="block max-w-[150px] truncate font-mono text-[9px] uppercase tracking-[0.22em] text-ink-soft">
             {name}&apos;s diary
           </span>
         </span>
       </button>
 
-      <button
-        onClick={onSettings}
-        className="grid size-10 place-items-center rounded-full bg-white/55 text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
-        aria-label="Settings"
-      >
-        <span className="grid gap-[3px]">
-          <span className="block h-[2px] w-4 rounded-full bg-current" />
-          <span className="block h-[2px] w-4 rounded-full bg-current opacity-60" />
-          <span className="block h-[2px] w-4 rounded-full bg-current" />
-        </span>
-      </button>
+      <div className="flex items-center gap-2">
+        <div
+          className="grid size-9 place-items-center rounded-full bg-ink text-vellum font-serif text-sm font-semibold"
+          aria-label={`Logged in as ${name}`}
+          title={name}
+        >
+          {initial}
+        </div>
+
+        <button
+          onClick={onSettings}
+          className="grid size-10 place-items-center rounded-full bg-white/55 text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
+          aria-label="Settings"
+        >
+          <span className="grid gap-[3px]">
+            <span className="block h-[2px] w-4 rounded-full bg-current" />
+            <span className="block h-[2px] w-4 rounded-full bg-current opacity-60" />
+            <span className="block h-[2px] w-4 rounded-full bg-current" />
+          </span>
+        </button>
+      </div>
     </header>
   );
 }
@@ -863,14 +892,17 @@ function TaskRow({ task, now, onChanged }: { task: Task; now: number; onChanged:
 function SettingsView({
   name,
   onRename,
+  onLogout,
   onBack,
   onCleared,
 }: {
   name: string;
   onRename: (value: string) => void;
+  onLogout: () => void | Promise<void>;
   onBack: () => void;
   onCleared: () => void;
 }) {
+  const user = useAuth();
   const [draft, setDraft] = useState(name);
   const [saved, setSaved] = useState(false);
   const [permission, setPermission] = useState<string>(() =>
@@ -929,7 +961,7 @@ function SettingsView({
             />
             <button
               type="submit"
-              className="rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+              className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
             >
               Save
             </button>
@@ -940,7 +972,35 @@ function SettingsView({
             </p>
           )}
         </div>
+        <div className="glass rounded-[16px] p-4 ring-1 ring-white/70">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight">
+            Account
+          </p>
 
+          <div className="mt-3 flex items-center gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-ink font-serif text-sm font-semibold text-vellum">
+              {name.trim().charAt(0).toUpperCase() || "U"}
+            </div>
+
+            <div className="min-w-0">
+              <p className="truncate font-sans text-[14px] font-medium text-ink">
+                {name}
+              </p>
+
+              <p className="truncate font-sans text-[12px] text-ink-soft">
+                {user?.email}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="lamplit-button lamplit-button:hover lamplit-button:active mt-4 rounded-full bg-white/60 px-4 py-2.5 font-sans text-[13px] font-medium text-ink ring-1 ring-ink/10 transition-colors hover:bg-white/85"
+          >
+            Log out
+          </button>
+        </div>
         <div className="glass rounded-[16px] p-4 ring-1 ring-white/70">
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight">
             Deadline reminders
@@ -965,15 +1025,13 @@ function SettingsView({
           ) : (
             <button
               onClick={enableReminders}
-              className="mt-3 rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+              className="lamplit-button lamplit-button:hover lamplit-button:active mt-3 rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
             >
               Enable reminders
             </button>
           )}
           <p className="mt-3 font-sans text-[12px] leading-relaxed text-ink-soft">
-            Because everything stays on your device with no account or server, notifications can
-            only fire while Lamplit is open or recently used — iPhone home-screen apps in particular
-            won&apos;t wake it in the background. The in-app banner is the reliable layer.
+            Notifications are handled on your device. They work best while Lamplit is open or recently used, iPhone home-screen apps in particular may not wake in the background. The in-app banner is the reliable layer.
           </p>
         </div>
 
@@ -982,8 +1040,7 @@ function SettingsView({
             Your data
           </p>
           <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-soft">
-            Entries, logs and tasks live only in this device&apos;s storage — no login, no cloud.
-            Clearing your browser or switching phone loses them, so keep a backup.
+            Your Lamplit account is securely managed through Supabase. Diary entries, logs, and tasks are currently stored locally on this device. Clearing your browser or switching devices can remove this local data, so keep a backup.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -1014,12 +1071,19 @@ function SettingsView({
         </div>
       </section>
 
-      <div className="mt-3 flex justify-center">
+      <div className="mt-3 flex justify-center gap-2">
         <button
           onClick={onBack}
-          className="rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
+          className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
         >
           Back to diary
+        </button>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
+        >
+          Log out
         </button>
       </div>
     </>
@@ -1278,7 +1342,7 @@ function PagesList({
             />
             <button
               type="submit"
-              className="rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+              className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
             >
               Create
             </button>
@@ -1287,7 +1351,7 @@ function PagesList({
       ) : (
         <button
           onClick={() => setAdding(true)}
-          className="mt-4 w-full rounded-[16px] bg-ink py-3.5 font-sans text-[14px] font-medium text-vellum transition-opacity active:opacity-80"
+          className="lamplit-button lamplit-button:hover lamplit-button:active mt-4 w-full rounded-[16px] bg-ink py-3.5 font-sans text-[14px] font-medium text-vellum transition-opacity active:opacity-80"
         >
           + New page
         </button>

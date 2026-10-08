@@ -78,18 +78,18 @@ function AuthForm() {
     setMessage("");
 
     const { error } = isSignUp
-    ? await supabase.auth.signUp({
-        email,
-        password,
-        options: {
+      ? await supabase.auth.signUp({
+          email,
+          password,
+          options: {
             data: {
-            name,
+              name,
             },
-        },
+          },
         })
-    : await supabase.auth.signInWithPassword({
-        email,
-        password,
+      : await supabase.auth.signInWithPassword({
+          email,
+          password,
         });
 
     if (error) {
@@ -105,53 +105,124 @@ function AuthForm() {
   };
 
   return (
-    <div>
-      <h2>{isSignUp ? "Create account" : "Log in"}</h2>
+    <div className="rounded-2xl border border-border bg-background/80 p-8 shadow-sm backdrop-blur-sm">
+      <div className="mb-8 text-center">
+        <h1 className="font-serif text-4xl tracking-tight text-foreground">
+          Lamplit
+        </h1>
 
-      <form onSubmit={handleSubmit}>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          A private, lamplit daily diary.
+        </p>
+      </div>
+
+      <div className="mb-6 text-center">
+        <h2 className="text-xl font-medium text-foreground">
+          {isSignUp ? "Create your account" : "Welcome back"}
+        </h2>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          {isSignUp
+            ? "Start your private space for reflection."
+            : "Continue where you left off."}
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
         {isSignUp && (
-        <input
-            type="text"
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-        />
+          <div>
+            <label
+              htmlFor="name"
+              className="mb-1.5 block text-sm font-medium text-foreground"
+            >
+              Name
+            </label>
+
+            <input
+              id="name"
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+            />
+          </div>
         )}
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div>
+          <label
+            htmlFor="email"
+            className="mb-1.5 block text-sm font-medium text-foreground"
+          >
+            Email
+          </label>
 
-        <button type="submit">
+          <input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="password"
+            className="mb-1.5 block text-sm font-medium text-foreground"
+          >
+            Password
+          </label>
+
+          <input
+            id="password"
+            type="password"
+            placeholder="Your password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+        >
           {isSignUp ? "Create account" : "Log in"}
         </button>
       </form>
 
-      {error && <p>{error}</p>}
-      {message && <p>{message}</p>}
+      {error && (
+        <p className="mt-4 rounded-lg bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
-      <button
-        type="button"
-        onClick={() => {
-          setIsSignUp(!isSignUp);
-          setError("");
-          setMessage("");
-        }}
-      >
-        {isSignUp ? "Already have an account?" : "Create an account"}
-      </button>
+      {message && (
+        <p className="mt-4 rounded-lg bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+          {message}
+        </p>
+      )}
+
+      <div className="mt-6 text-center">
+        <button
+          type="button"
+          onClick={() => {
+            setIsSignUp(!isSignUp);
+            setError("");
+            setMessage("");
+          }}
+          className="text-sm text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline"
+        >
+          {isSignUp
+            ? "Already have an account? Log in"
+            : "Don't have an account? Create one"}
+        </button>
+      </div>
     </div>
   );
 }
