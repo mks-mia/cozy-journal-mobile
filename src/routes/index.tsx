@@ -9,6 +9,9 @@ import {
   setPageFontSize,
   renamePage,
   deletePage,
+  syncPages,
+  syncPage,
+  deletePageFromSupabase,
   stamp,
   todayKey,
   prettyDate,
@@ -117,9 +120,27 @@ function DiaryApp() {
   const [now, setNow] = useState(() => Date.now());
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  //waits for the user's Supabase diary pages to load before displaying the diary.
   useEffect(() => {
-    setHydrated(true);
-  }, []);
+    let cancelled = false;
+    setHydrated(false);
+    if (!user?.id) {
+      setHydrated(true);
+      return;
+    }
+    void syncPages(user.id).finally(() => {
+      if (!cancelled) {
+        setHydrated(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+  if (!user) {
+    return null;
+  }
+
 
   // Read fresh every render — small data set, always in sync with storage.
   const pages = hydrated ? getPages() : [];
@@ -262,6 +283,7 @@ function DiaryApp() {
         ) : view === "page" && open ? (
           <PageView
             page={open}
+            userId={user.id}
             onBack={() => go("pages")}
             onChanged={refresh}
             onDeleted={() => go("pages")}
@@ -273,6 +295,7 @@ function DiaryApp() {
             onCreate={(title) => {
               const created = createPage(title);
               openPage(created.id);
+              void syncPage(user.id, created);
             }}
           />
         )}
@@ -1040,7 +1063,7 @@ function SettingsView({
             Your data
           </p>
           <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-soft">
-            Your Lamplit account is securely managed through Supabase. Diary entries, logs, and tasks are currently stored locally on this device. Clearing your browser or switching devices can remove this local data, so keep a backup.
+            Your Lamplit account is securely managed through Supabase. Diary pages are synced to your account, while daily logs, tasks, trackers, and other data are currently stored locally on this device.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -1151,11 +1174,13 @@ function ToolButton({
 
 function PageView({
   page,
+  userId,
   onBack,
   onChanged,
   onDeleted,
 }: {
   page: DiaryPage;
+  userId: string;
   onBack: () => void;
   onChanged: () => void;
   onDeleted: () => void;
@@ -1178,7 +1203,10 @@ function PageView({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const saved = updatePage(page.id, value);
-      if (saved) setUpdatedAt(saved.updatedAt);
+      if (saved) {
+        setUpdatedAt(saved.updatedAt);
+        void syncPage(userId, saved);
+      }
       onChanged();
     }, 600);
   };
@@ -1192,15 +1220,21 @@ function PageView({
   const changeSize = (next: number) => {
     const clamped = Math.min(34, Math.max(14, next));
     setFontSize(clamped);
-    setPageFontSize(page.id, clamped);
+    const saved = setPageFontSize(page.id, clamped);
+    if (saved) {
+      void syncPage(userId, saved);
+    }
     onChanged();
   };
 
   const commitTitle = () => {
     const clean = title.trim();
     if (clean === page.title) return;
-    renamePage(page.id, clean);
-    setTitle(clean || page.title);
+    const saved = renamePage(page.id, clean);
+    if (saved) {
+      setTitle(saved.title);
+      void syncPage(userId, saved);
+    }
     onChanged();
   };
 
@@ -1289,6 +1323,7 @@ function PageView({
               return;
             }
             deletePage(page.id);
+            void deletePageFromSupabase(userId, page.id);
             onDeleted();
           }}
           className="ml-auto rounded-full bg-white/40 px-4 py-2 text-[12px] font-medium text-ink-soft ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-ink/10"
