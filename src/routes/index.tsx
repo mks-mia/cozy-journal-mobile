@@ -9,13 +9,14 @@ import {
   setPageFontSize,
   renamePage,
   deletePage,
+  syncPages,
+  syncPage,
+  deletePageFromSupabase,
   stamp,
   todayKey,
   prettyDate,
   shortDate,
   formatDateKey,
-  getUserName,
-  saveUserName,
   getLogs,
   addLog,
   deleteLog,
@@ -55,53 +56,91 @@ import { FriendChat } from "../components/friend-chat";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import Auth from "../components/auth";
+import { useAuth } from "../components/auth";
+import { createClient } from "../lib/supabase";
+
+const supabase = createClient();
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Lamplit — Private Diary, Daily Log & Tasks" },
+
       {
         name: "description",
         content:
-          "A calm, private space to write a little each day, log what happened, and keep deadlines in sight. Everything stays on your device.",
+          "A calm, private space to write a little each day, log what happened, and keep deadlines in sight.",
       },
+
       {
         property: "og:title",
         content: "Lamplit — Private Diary, Daily Log & Tasks",
       },
+
       {
         property: "og:description",
         content:
-          "Write your daily page, log the day as it happens, and get reminded before deadlines. Private and on-device.",
+          "Write your daily page, log the day as it happens, and get reminded before deadlines. A private space for your daily life.",
       },
+
       { property: "og:type", content: "website" },
+
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+
   component: Index,
 });
 
+// function Index() {
+//   return <DiaryApp />;
+// }
+
 function Index() {
-  return <DiaryApp />;
+  return (
+    <Auth>
+      <DiaryApp />
+    </Auth>
+  );
 }
 
 type View = "pages" | "page" | "log" | "tasks" | "friend" | "stats" | "settings";
 
 function DiaryApp() {
+  const user = useAuth();
+  const name = user?.user_metadata?.["name"] ?? user?.email ?? "";
   const [view, setView] = useState<View>("pages");
   const [openId, setOpenId] = useState<string | null>(null);
   const [, forceTick] = useState(0);
   const refresh = () => forceTick((n) => n + 1);
-
+  
   const [hydrated, setHydrated] = useState(false);
-  const [name, setName] = useState("");
+  //const [name, setName] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  //waits for the user's Supabase diary pages to load before displaying the diary.
   useEffect(() => {
-    setName(getUserName());
-    setHydrated(true);
-  }, []);
+    let cancelled = false;
+    setHydrated(false);
+    if (!user?.id) {
+      setHydrated(true);
+      return;
+    }
+    void syncPages(user.id).finally(() => {
+      if (!cancelled) {
+        setHydrated(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+  if (!user) {
+    return null;
+  }
+
 
   // Read fresh every render — small data set, always in sync with storage.
   const pages = hydrated ? getPages() : [];
@@ -166,19 +205,8 @@ function DiaryApp() {
     setView(next);
   };
 
-  const handleNameSubmit = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    saveUserName(trimmed);
-    setName(trimmed);
-  };
-
   if (!hydrated) {
     return <div className="min-h-dvh bg-vellum" />;
-  }
-
-  if (!name) {
-    return <WelcomeScreen onDone={handleNameSubmit} />;
   }
 
   const tab: "diary" | "log" | "tasks" | "friend" | "stats" =
@@ -225,19 +253,37 @@ function DiaryApp() {
           <StatsView />
         ) : view === "settings" ? (
           <SettingsView
-            name={name}
-            onRename={(value) => {
-              handleNameSubmit(value);
-            }}
-            onBack={() => go("pages")}
-            onCleared={() => {
-              setName("");
-              refresh();
-            }}
-          />
+          name={name}
+          onRename={async (value) => {
+            const { error } = await supabase.auth.updateUser({
+              data: {
+                name: value,
+              },
+            });
+
+            if (error) {
+              console.error("Failed to update name:", error);
+              return;
+            }
+
+            refresh();
+          }}
+          onLogout={async () => {
+            const { error } = await supabase.auth.signOut();
+
+            if (error) {
+              console.error("Failed to log out:", error);
+            }
+          }}
+          onBack={() => go("pages")}
+          onCleared={() => {
+            refresh();
+          }}
+        />
         ) : view === "page" && open ? (
           <PageView
             page={open}
+            userId={user.id}
             onBack={() => go("pages")}
             onChanged={refresh}
             onDeleted={() => go("pages")}
@@ -249,6 +295,7 @@ function DiaryApp() {
             onCreate={(title) => {
               const created = createPage(title);
               openPage(created.id);
+              void syncPage(user.id, created);
             }}
           />
         )}
@@ -276,6 +323,8 @@ function Header({
   onHome: () => void;
   onSettings: () => void;
 }) {
+  const initial = name.trim().charAt(0).toUpperCase() || "U";
+
   return (
     <header className="flex items-center justify-between">
       <button
@@ -286,25 +335,39 @@ function Header({
         <span className="grid size-9 place-items-center rounded-[12px] bg-ink text-vellum font-serif text-lg">
           L
         </span>
+
         <span className="leading-tight">
-          <span className="block font-serif text-[19px] font-semibold tracking-tight">Lamplit</span>
+          <span className="block font-serif text-[19px] font-semibold tracking-tight">
+            Lamplit
+          </span>
+
           <span className="block max-w-[150px] truncate font-mono text-[9px] uppercase tracking-[0.22em] text-ink-soft">
             {name}&apos;s diary
           </span>
         </span>
       </button>
 
-      <button
-        onClick={onSettings}
-        className="grid size-10 place-items-center rounded-full bg-white/55 text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
-        aria-label="Settings"
-      >
-        <span className="grid gap-[3px]">
-          <span className="block h-[2px] w-4 rounded-full bg-current" />
-          <span className="block h-[2px] w-4 rounded-full bg-current opacity-60" />
-          <span className="block h-[2px] w-4 rounded-full bg-current" />
-        </span>
-      </button>
+      <div className="flex items-center gap-2">
+        <div
+          className="grid size-9 place-items-center rounded-full bg-ink text-vellum font-serif text-sm font-semibold"
+          aria-label={`Logged in as ${name}`}
+          title={name}
+        >
+          {initial}
+        </div>
+
+        <button
+          onClick={onSettings}
+          className="grid size-10 place-items-center rounded-full bg-white/55 text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
+          aria-label="Settings"
+        >
+          <span className="grid gap-[3px]">
+            <span className="block h-[2px] w-4 rounded-full bg-current" />
+            <span className="block h-[2px] w-4 rounded-full bg-current opacity-60" />
+            <span className="block h-[2px] w-4 rounded-full bg-current" />
+          </span>
+        </button>
+      </div>
     </header>
   );
 }
@@ -852,14 +915,17 @@ function TaskRow({ task, now, onChanged }: { task: Task; now: number; onChanged:
 function SettingsView({
   name,
   onRename,
+  onLogout,
   onBack,
   onCleared,
 }: {
   name: string;
   onRename: (value: string) => void;
+  onLogout: () => void | Promise<void>;
   onBack: () => void;
   onCleared: () => void;
 }) {
+  const user = useAuth();
   const [draft, setDraft] = useState(name);
   const [saved, setSaved] = useState(false);
   const [permission, setPermission] = useState<string>(() =>
@@ -918,7 +984,7 @@ function SettingsView({
             />
             <button
               type="submit"
-              className="rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+              className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
             >
               Save
             </button>
@@ -929,7 +995,35 @@ function SettingsView({
             </p>
           )}
         </div>
+        <div className="glass rounded-[16px] p-4 ring-1 ring-white/70">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight">
+            Account
+          </p>
 
+          <div className="mt-3 flex items-center gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-ink font-serif text-sm font-semibold text-vellum">
+              {name.trim().charAt(0).toUpperCase() || "U"}
+            </div>
+
+            <div className="min-w-0">
+              <p className="truncate font-sans text-[14px] font-medium text-ink">
+                {name}
+              </p>
+
+              <p className="truncate font-sans text-[12px] text-ink-soft">
+                {user?.email}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="lamplit-button lamplit-button:hover lamplit-button:active mt-4 rounded-full bg-white/60 px-4 py-2.5 font-sans text-[13px] font-medium text-ink ring-1 ring-ink/10 transition-colors hover:bg-white/85"
+          >
+            Log out
+          </button>
+        </div>
         <div className="glass rounded-[16px] p-4 ring-1 ring-white/70">
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-lamplight">
             Deadline reminders
@@ -954,15 +1048,13 @@ function SettingsView({
           ) : (
             <button
               onClick={enableReminders}
-              className="mt-3 rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+              className="lamplit-button lamplit-button:hover lamplit-button:active mt-3 rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
             >
               Enable reminders
             </button>
           )}
           <p className="mt-3 font-sans text-[12px] leading-relaxed text-ink-soft">
-            Because everything stays on your device with no account or server, notifications can
-            only fire while Lamplit is open or recently used — iPhone home-screen apps in particular
-            won&apos;t wake it in the background. The in-app banner is the reliable layer.
+            Notifications are handled on your device. They work best while Lamplit is open or recently used, iPhone home-screen apps in particular may not wake in the background. The in-app banner is the reliable layer.
           </p>
         </div>
 
@@ -971,8 +1063,7 @@ function SettingsView({
             Your data
           </p>
           <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-soft">
-            Entries, logs and tasks live only in this device&apos;s storage — no login, no cloud.
-            Clearing your browser or switching phone loses them, so keep a backup.
+            Your Lamplit account is securely managed through Supabase. Diary pages are synced to your account, while daily logs, tasks, trackers, and other data are currently stored locally on this device.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -1003,12 +1094,19 @@ function SettingsView({
         </div>
       </section>
 
-      <div className="mt-3 flex justify-center">
+      <div className="mt-3 flex justify-center gap-2">
         <button
           onClick={onBack}
-          className="rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
+          className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
         >
           Back to diary
+        </button>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-white/55 px-5 py-2.5 text-[13px] font-medium text-ink ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-white/85"
+        >
+          Log out
         </button>
       </div>
     </>
@@ -1076,11 +1174,13 @@ function ToolButton({
 
 function PageView({
   page,
+  userId,
   onBack,
   onChanged,
   onDeleted,
 }: {
   page: DiaryPage;
+  userId: string;
   onBack: () => void;
   onChanged: () => void;
   onDeleted: () => void;
@@ -1103,7 +1203,10 @@ function PageView({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const saved = updatePage(page.id, value);
-      if (saved) setUpdatedAt(saved.updatedAt);
+      if (saved) {
+        setUpdatedAt(saved.updatedAt);
+        void syncPage(userId, saved);
+      }
       onChanged();
     }, 600);
   };
@@ -1117,15 +1220,21 @@ function PageView({
   const changeSize = (next: number) => {
     const clamped = Math.min(34, Math.max(14, next));
     setFontSize(clamped);
-    setPageFontSize(page.id, clamped);
+    const saved = setPageFontSize(page.id, clamped);
+    if (saved) {
+      void syncPage(userId, saved);
+    }
     onChanged();
   };
 
   const commitTitle = () => {
     const clean = title.trim();
     if (clean === page.title) return;
-    renamePage(page.id, clean);
-    setTitle(clean || page.title);
+    const saved = renamePage(page.id, clean);
+    if (saved) {
+      setTitle(saved.title);
+      void syncPage(userId, saved);
+    }
     onChanged();
   };
 
@@ -1214,6 +1323,7 @@ function PageView({
               return;
             }
             deletePage(page.id);
+            void deletePageFromSupabase(userId, page.id);
             onDeleted();
           }}
           className="ml-auto rounded-full bg-white/40 px-4 py-2 text-[12px] font-medium text-ink-soft ring-1 ring-ink/10 backdrop-blur-md transition-colors hover:bg-ink/10"
@@ -1267,7 +1377,7 @@ function PagesList({
             />
             <button
               type="submit"
-              className="rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+              className="lamplit-button lamplit-button:hover lamplit-button:active rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
             >
               Create
             </button>
@@ -1276,7 +1386,7 @@ function PagesList({
       ) : (
         <button
           onClick={() => setAdding(true)}
-          className="mt-4 w-full rounded-[16px] bg-ink py-3.5 font-sans text-[14px] font-medium text-vellum transition-opacity active:opacity-80"
+          className="lamplit-button lamplit-button:hover lamplit-button:active mt-4 w-full rounded-[16px] bg-ink py-3.5 font-sans text-[14px] font-medium text-vellum transition-opacity active:opacity-80"
         >
           + New page
         </button>
@@ -1499,80 +1609,6 @@ function StatsView() {
         </>
       )}
     </>
-  );
-}
-
-function WelcomeScreen({ onDone }: { onDone: (name: string) => void }) {
-  const [name, setName] = useState("");
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const canSubmit = name.trim().length > 0;
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const submit = () => {
-    if (canSubmit) onDone(name);
-  };
-
-  return (
-    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-vellum px-6 pb-8 pt-10 font-sans text-ink">
-      <div className="lamp" />
-      <div className="absolute -left-24 -top-24 size-72 rounded-full bg-lamplight/15 blur-3xl animate-sheen" />
-
-      <div className="relative z-10 flex flex-1 flex-col justify-center">
-        <span className="grid size-14 place-items-center rounded-[16px] bg-ink font-serif text-2xl text-vellum">
-          L
-        </span>
-
-        <h1 className="mt-7 font-serif text-[42px] font-semibold leading-[1.05] tracking-tight text-balance animate-fade-up">
-          Your diary,
-          <br />
-          waiting for a name.
-        </h1>
-        <p className="mt-4 max-w-xs font-sans text-[15px] leading-relaxed text-ink-soft animate-fade-up">
-          Everything stays on this device. Just tell us who you are and we&apos;ll set the page for
-          you.
-        </p>
-
-        <form
-          className="mt-9 animate-fade-up"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          <label
-            htmlFor="welcome-name"
-            className="font-mono text-[10px] uppercase tracking-[0.2em] text-lamplight"
-          >
-            Your name
-          </label>
-          <input
-            id="welcome-name"
-            ref={inputRef}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Maya"
-            autoComplete="given-name"
-            enterKeyHint="done"
-            className="mt-2 w-full rounded-[14px] border-0 bg-white/55 px-4 py-3.5 font-serif text-[20px] font-medium text-ink placeholder:text-ink-soft/40 ring-1 ring-white/70 backdrop-blur-md transition focus:ring-2 focus:ring-lamplight/50 focus:outline-none"
-          />
-
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="mt-6 w-full rounded-full bg-ink py-3.5 font-sans text-[15px] font-medium text-vellum transition-opacity disabled:opacity-35"
-          >
-            Open my diary
-          </button>
-        </form>
-      </div>
-
-      <p className="relative z-10 mt-8 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-ink-soft">
-        private · on-device · no account
-      </p>
-    </div>
   );
 }
 

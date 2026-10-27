@@ -232,3 +232,20 @@
     radial-gradient(100% 70% at 105% 105%, hsl(215 70% 55% / 0.22), transparent 60%),
     hsl(215 42% 96%);
 }
+
+.lamplit-button {
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    opacity 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.lamplit-button:hover {
+  opacity: 0.7;
+}
+
+.lamplit-button:active {
+  transform: scale(0.97);
+  opacity: 0.8;
+}

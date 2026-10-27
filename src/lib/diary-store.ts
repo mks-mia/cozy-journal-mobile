@@ -1,3 +1,7 @@
+import { createClient } from "./supabase";
+
+const supabase = createClient();
+
 export type DiaryEntry = {
   id: string;
   date: string; // YYYY-MM-DD
@@ -471,7 +475,7 @@ export function createPage(title: string): DiaryPage {
   const pages = loadPages();
   const now = Date.now();
   const page: DiaryPage = {
-    id: `page-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    id: crypto.randomUUID(),
     title: title.trim() || prettyDate(todayKey()),
     content: "",
     createdAt: now,
@@ -504,16 +508,129 @@ export function setPageFontSize(id: string, fontSize: number): DiaryPage | undef
   return saved;
 }
 
-export function renamePage(id: string, title: string) {
+export function renamePage(id: string, title: string): DiaryPage | undefined {
   const clean = title.trim();
-  const pages = loadPages().map((p) =>
-    p.id === id ? { ...p, title: clean || prettyDate(todayKey()), updatedAt: Date.now() } : p,
-  );
+  let saved: DiaryPage | undefined;
+  const pages = loadPages().map((p) => {
+    if (p.id !== id) return p;
+    saved = {
+      ...p,
+      title: clean || prettyDate(todayKey()),
+      updatedAt: Date.now(),
+    };
+    return saved;
+  });
   savePages(pages);
+  return saved;
 }
 
 export function deletePage(id: string) {
   savePages(loadPages().filter((p) => p.id !== id));
+}
+
+function pageToRow(page: DiaryPage, userId: string) {
+  return {
+    id: page.id,
+    user_id: userId,
+    title: page.title,
+    content: page.content,
+    created_at: new Date(page.createdAt).toISOString(),
+    updated_at: new Date(page.updatedAt).toISOString(),
+    font_size: page.fontSize ?? null,
+  };
+}
+
+function rowToPage(row: {
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  font_size: number | null;
+}): DiaryPage {
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+    ...(row.font_size !== null ? { fontSize: row.font_size } : {}),
+  };
+}
+
+export async function syncPages(userId: string): Promise<void> {
+  const { data: remotePages, error } = await supabase
+    .from("diary_pages")
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    //console.error("Failed to load diary pages:", error);
+    
+    console.error("Failed to load diary pages:", JSON.stringify(error, null, 2));
+
+    return;
+  }
+
+  const localPages = loadPages();
+
+  // First-time migration:
+  // if Supabase is empty but this device has pages, upload them.
+  if (remotePages.length === 0 && localPages.length > 0) {
+    const migratedPages = localPages.map((page) => ({
+      ...page,
+      // Old local IDs such as "page-123..." are not UUIDs.
+      // Generate UUIDs before inserting into Supabase.
+      id:
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(page.id)
+          ? page.id
+          : crypto.randomUUID(),
+    }));
+
+    savePages(migratedPages);
+    const { data: uploaded, error: uploadError } = await supabase
+      .from("diary_pages")
+      .upsert(migratedPages.map((page) => pageToRow(page, userId)))
+      .select();
+    if (uploadError) {
+      console.error("Failed to migrate diary pages:", uploadError);
+      return;
+    }
+    if (uploaded) {
+      savePages(uploaded.map(rowToPage));
+    }
+    return;
+  }
+  // Supabase already has the account's pages.
+  savePages(remotePages.map(rowToPage));
+}
+
+export async function syncPage(
+  userId: string,
+  page: DiaryPage,
+): Promise<void> {
+  const { error } = await supabase
+    .from("diary_pages")
+    .upsert(pageToRow(page, userId));
+
+  if (error) {
+    console.error("Failed to sync diary page:", error);
+  }
+}
+
+export async function deletePageFromSupabase(
+  userId: string,
+  id: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("diary_pages")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) {
+    console.error("Failed to delete diary page:", error);
+  }
 }
 
 export function stamp(ts: number): string {
