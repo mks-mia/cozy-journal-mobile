@@ -22,79 +22,223 @@ const newSession = (): Session => ({
 });
 
 export function FriendChat({ name }: { name: string }) {
+  const user = useAuth();
+  const supabase = useMemo(() => createClient(), []);
   const [listOpen, setListOpen] = useState(false);
-
-  const [sessions, setSessions] = useState<Session[]>(() => {
-    try {
-      const saved = localStorage.getItem("lamplit.chat.sessions.v1");
-      if (saved) {
-        const parsed = JSON.parse(saved) as Session[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {
-      // Start a fresh session if stored data is invalid.
-    }
-
-    return [newSession()];
-  });
-
-  const [activeId, setActiveId] = useState<string>(() => {
-    const saved = localStorage.getItem("lamplit.chat.active.v1");
-    const storedSessions = (() => {
-      try {
-        const value = localStorage.getItem("lamplit.chat.sessions.v1");
-        return value ? (JSON.parse(value) as Session[]) : [];
-      } catch {
-        return [];
-      }
-    })();
-
-    return saved && storedSessions.some((s) => s.id === saved)
-      ? saved
-      : "";
-  });
-
-  const active = sessions.find((s) => s.id === activeId) ?? sessions[0]!;
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadSessions() {
+      if (!user) {
+        setSessions([]);
+        setActiveId("");
+        setSessionsLoading(false);
+        return;
+      }
+
+      setSessionsLoading(true);
+
+      const { data, error } = await supabase
+        .from("chat_sessions")
+        .select("id, title, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Failed to load chat sessions:", error.message);
+        setSessionsLoading(false);
+        return;
+      }
+
+      const loadedSessions: Session[] = (data ?? []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        createdAt: new Date(row.created_at).getTime(),
+      }));
+
+      if (loadedSessions.length === 0) {
+        const firstSession = newSession();
+
+        const { error: insertError } = await supabase
+          .from("chat_sessions")
+          .insert({
+            id: firstSession.id,
+            user_id: user.id,
+            title: firstSession.title,
+          });
+
+        if (cancelled) return;
+
+        if (insertError) {
+          console.error("Failed to create first chat:", insertError.message);
+          setSessionsLoading(false);
+          return;
+        }
+
+        setSessions([firstSession]);
+        setActiveId(firstSession.id);
+      } else {
+        setSessions(loadedSessions);
+
+        setActiveId((currentId) =>
+          loadedSessions.some((session) => session.id === currentId)
+            ? currentId
+            : loadedSessions[0]!.id,
+        );
+      }
+
+      setSessionsLoading(false);
+    }
+
+    void loadSessions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, supabase]);
+
+  // Listen for chat session changes from other devices.
+  useEffect(() => {
+    if (!user) return;
+
+    async function refreshSessions() {
+      const { data, error } = await supabase
+        .from("chat_sessions")
+        .select("id, title, created_at")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Failed to sync chat sessions:", error.message);
+        return;
+      }
+
+      const updatedSessions: Session[] = (data ?? []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        createdAt: new Date(row.created_at).getTime(),
+      }));
+
+      setSessions(updatedSessions);
+
+      setActiveId((currentId) => {
+        if (updatedSessions.some((session) => session.id === currentId)) {
+          return currentId;
+        }
+
+        return updatedSessions[0]?.id ?? "";
+      });
+    }
+
+    const channel = supabase
+      .channel(`chat-sessions-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_sessions",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void refreshSessions();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [user, supabase]);
+
+  const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
+  
+  // return (
+  //   <p style={{ fontSize: "10px", color: "gray" }}>
+  //   Session ID: {active.id}
+  // </p>
+  // )
+
+  useEffect(() => {
+    if (sessionsLoading || sessions.length === 0) return;
+
     if (!sessions.some((s) => s.id === activeId)) {
       setActiveId(sessions[0]!.id);
     }
-  }, [sessions, activeId]);
+  }, [sessions, activeId, sessionsLoading]);
 
-  useEffect(() => {
-    localStorage.setItem(
-      "lamplit.chat.sessions.v1",
-      JSON.stringify(sessions),
-    );
-  }, [sessions]);
+  const startChat = async () => {
+    if (!user) return;
 
-  useEffect(() => {
-    if (activeId) {
-      localStorage.setItem("lamplit.chat.active.v1", activeId);
-    }
-  }, [activeId]);
-
-  const startChat = () => {
     const session = newSession();
+
+    const { error } = await supabase
+      .from("chat_sessions")
+      .insert({
+        id: session.id,
+        user_id: user.id,
+        title: session.title,
+      });
+
+    if (error) {
+      console.error("Failed to create new chat:", error.message);
+      setSessionError("Unable to create a new chat. Please try again.");
+      return;
+    }
+
     setSessions((previous) => [session, ...previous]);
     setActiveId(session.id);
     setListOpen(false);
   };
 
-  const titleFor = (id: string, text: string) => {
+  const titleFor = async (id: string, text: string) => {
+    const session = sessions.find((item) => item.id === id);
+
+    if (!session || session.title !== "New chat" || !user) return;
+
+    const newTitle = text.slice(0, 34);
+
+    const { error } = await supabase
+      .from("chat_sessions")
+      .update({ title: newTitle })
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to update chat title:", error.message);
+      setSessionError("Unable to update the chat title.");
+      return;
+    }
+
     setSessions((previous) =>
-      previous.map((session) =>
-        session.id === id && session.title === "New chat"
-          ? { ...session, title: text.slice(0, 34) }
-          : session,
+      previous.map((item) =>
+        item.id === id ? { ...item, title: newTitle } : item,
       ),
     );
   };
 
-  const removeSession = (id: string) => {
+  const removeSession = async (id: string) => {
+    if (!user) return;
+
+    const { error } = await supabase
+      .from("chat_sessions")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to delete chat session:", error.message);
+      setSessionError("Unable to delete this chat. Please try again.");
+      return;
+    }
+
     const remaining = sessions.filter((session) => session.id !== id);
 
     if (remaining.length > 0) {
@@ -105,6 +249,23 @@ export function FriendChat({ name }: { name: string }) {
       }
     } else {
       const replacement = newSession();
+
+      const { error: insertError } = await supabase
+        .from("chat_sessions")
+        .insert({
+          id: replacement.id,
+          user_id: user.id,
+          title: replacement.title,
+        });
+
+      if (insertError) {
+        console.error("Failed to create replacement chat:", insertError.message);
+        setSessionError("Unable to create a replacement chat.");
+        setSessions([]);
+        setActiveId("");
+        return;
+      }
+
       setSessions([replacement]);
       setActiveId(replacement.id);
     }
@@ -148,7 +309,7 @@ export function FriendChat({ name }: { name: string }) {
                   setListOpen(false);
                 }}
                 className={`flex-1 truncate rounded-xl px-3 py-2 text-left text-[13px] ${
-                  session.id === active.id
+                  session.id === active?.id
                     ? "bg-ink text-vellum"
                     : "text-ink-soft hover:bg-white/70"
                 }`}
@@ -167,12 +328,18 @@ export function FriendChat({ name }: { name: string }) {
         </ul>
       )}
 
-      <ChatWindow
-        key={active.id}
-        sessionId={active.id}
-        name={name}
-        onFirstMessage={(text) => titleFor(active.id, text)}
-      />
+      {sessionsLoading ? (
+        <p>Loading chats...</p>
+      ) : active ? (
+        <ChatWindow
+          key={active.id}
+          sessionId={active.id}
+          name={name}
+          onFirstMessage={(text) => titleFor(active.id, text)}
+        />
+      ) : (
+        <p>Unable to load your chats. Please refresh.</p>
+      )}
     </section>
   );
 }
@@ -305,6 +472,60 @@ function ChatWindow({
       cancelled = true;
     };
   }, [sessionId, user, supabase, setMessages]);
+
+
+  // Listen for messages inserted from other devices.
+  useEffect(() => {
+    if (historyLoading || !user) return;
+
+    const channel = supabase
+      .channel(`chat-messages-${sessionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            id: string;
+            client_message_id: string | null;
+            user_id: string;
+            role: "user" | "assistant";
+            content: string;
+          };
+
+          // Only accept messages belonging to this account.
+          if (row.user_id !== user.id) return;
+
+          const messageId = row.client_message_id ?? row.id;
+
+          const incoming: UIMessage = {
+            id: messageId,
+            role: row.role,
+            parts: [{ type: "text", text: row.content }],
+          };
+
+          setMessages((previous) => {
+            if (previous.some((message) => message.id === messageId)){
+              return previous;
+            }
+
+            return [...previous, incoming];
+          });
+
+          savedMessageIds.current.add(messageId);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [historyLoading, sessionId, user, supabase, setMessages]);
+
 
   // Persist completed messages after the database history has loaded.
   useEffect(() => {
@@ -476,6 +697,7 @@ function ChatWindow({
           disabled={historyLoading || !user}
           className="max-h-28 flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-soft/60"
         />
+        
 
         <button
           onClick={submit}
