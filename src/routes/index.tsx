@@ -18,14 +18,17 @@ import {
   shortDate,
   formatDateKey,
   getLogs,
-  addLog,
-  deleteLog,
+  syncLogs,
+  addLogToSupabase,
+  deleteLogFromSupabase,
+  syncTrackers,
+  addTrackerToSupabase,
+  deleteTrackerFromSupabase,
+  syncTrackerProgress,
+  setProgressInSupabase,
+  migrateTrackersToSupabase,
   getTrackers,
-  addTracker,
-  deleteTracker,
-  getProgressFor,
   getProgressMap,
-  bumpProgress,
   shiftDateKey,
   lastDays,
   getTasks,
@@ -42,6 +45,8 @@ import {
   type DiaryPage,
   type LogEntry,
   type Task,
+  type Tracker,
+  type ProgressMap,
 } from "../lib/diary-store";
 
 import {
@@ -111,6 +116,31 @@ function DiaryApp() {
   const user = useAuth();
   const name = user?.user_metadata?.["name"] ?? user?.email ?? "";
   const [view, setView] = useState<View>("pages");
+  const [viewRestored, setViewRestored] = useState(false);
+
+  useEffect(() => {
+    const savedView = sessionStorage.getItem("lamplit.activeView");
+
+    if (
+      savedView === "pages" ||
+      savedView === "log" ||
+      savedView === "tasks" ||
+      savedView === "friend" ||
+      savedView === "stats" ||
+      savedView === "settings"
+    ) {
+      setView(savedView);
+    }
+
+    setViewRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!viewRestored) return;
+
+    sessionStorage.setItem("lamplit.activeView", view);
+  }, [view, viewRestored]);
+
   const [openId, setOpenId] = useState<string | null>(null);
   const [, forceTick] = useState(0);
   const refresh = () => forceTick((n) => n + 1);
@@ -244,7 +274,7 @@ function DiaryApp() {
         )}
 
         {view === "log" ? (
-          <LogView onChanged={refresh} />
+          <LogView userId={user.id} onChanged={refresh} />
         ) : view === "tasks" ? (
           <TasksView now={now} buckets={buckets} onChanged={refresh} />
         ) : view === "friend" ? (
@@ -421,7 +451,8 @@ function PageTitle({ eyebrow, title, meta }: { eyebrow: string; title: string; m
   );
 }
 
-function LogView({ onChanged }: { onChanged: () => void }) {
+// function LogView({ onChanged }: { onChanged: () => void }) {
+function LogView({userId,onChanged,}: {userId: string;onChanged: () => void;}) {
   const [text, setText] = useState("");
   const [date, setDate] = useState(() => todayKey());
   const [addingTracker, setAddingTracker] = useState(false);
@@ -430,23 +461,166 @@ function LogView({ onChanged }: { onChanged: () => void }) {
   const [tUnit, setTUnit] = useState("");
 
   const today = todayKey();
-  const logs = getLogs().filter((l) => l.date === date);
-  const trackers = getTrackers();
-  const progress = getProgressFor(date);
+  const [allLogs, setAllLogs] = useState<LogEntry[]>(() => getLogs());
+  const logs = allLogs.filter((l) => l.date === date);
+  const [allTrackers, setAllTrackers] = useState<Tracker[]>(() => getTrackers());
+  const [allProgress, setAllProgress] = useState<ProgressMap>(() => getProgressMap());
+
+  useEffect(() => {
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | undefined;
+
+    const loadLogs = async () => {
+      const syncedLogs = await syncLogs(userId);
+
+      if (cancelled) return;
+
+      setAllLogs(syncedLogs);
+
+      channel = supabase
+        .channel(`daily-logs-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "daily_logs",
+          },
+          () => {
+            void syncLogs(userId).then((updatedLogs) => {
+              if (!cancelled) {
+                setAllLogs(updatedLogs);
+              }
+            });
+          },
+        )
+        .subscribe((status, error) => {
+          console.log("Daily logs realtime status:", status);
+          if (error) {
+            console.error("Daily logs realtime error:", error);
+          }
+        });
+    };
+
+    void loadLogs();
+
+    return () => {
+      cancelled = true;
+
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [userId]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | undefined;
+
+    const loadTrackers = async () => {
+      const migrated = await migrateTrackersToSupabase(userId);
+
+      if (!migrated || cancelled) return;
+
+      const [syncedTrackers, syncedProgress] = await Promise.all([
+        syncTrackers(userId),
+        syncTrackerProgress(userId),
+      ]);
+
+      if (cancelled) return;
+
+      setAllTrackers(syncedTrackers);
+      setAllProgress(syncedProgress);
+
+      channel = supabase
+        .channel(`trackers-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "trackers",
+          },
+          () => {
+            void refreshTrackers();
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "tracker_progress",
+          },
+          () => {
+            void refreshTrackers();
+          },
+        )
+        .subscribe((status, error) => {
+          console.log("Trackers realtime status:", status);
+          if (error) {
+            console.error("Trackers realtime error:", error);
+          }
+        });
+    };
+
+    const refreshTrackers = async () => {
+      const [syncedTrackers, syncedProgress] = await Promise.all([
+        syncTrackers(userId),
+        syncTrackerProgress(userId),
+      ]);
+
+      if (cancelled) return;
+
+      setAllTrackers(syncedTrackers);
+      setAllProgress(syncedProgress);
+    };
+
+    void loadTrackers();
+
+    return () => {
+      cancelled = true;
+
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [userId]);
+
+
+  const trackers = allTrackers;
+  const progress = allProgress[date] ?? {};
   const week = lastDays(date, 7);
-  const progressMap = getProgressMap();
+  const progressMap = allProgress;
   const canAdd = text.trim().length > 0;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canAdd) return;
-    addLog(text.trim(), date);
+
+    const entry = await addLogToSupabase(userId, text.trim(), date);
+
+    if (!entry) return;
+
+    setAllLogs((current) => [entry, ...current]);
     setText("");
     onChanged();
   };
 
-  const submitTracker = () => {
+  const submitTracker = async () => {
     if (!tName.trim()) return;
-    addTracker(tName.trim(), Number(tTarget) || 1, tUnit.trim());
+
+    const tracker = await addTrackerToSupabase(
+      userId,
+      tName.trim(),
+      Number(tTarget) || 1,
+      tUnit.trim(),
+    );
+
+    if (!tracker) return;
+
+    setAllTrackers((current) => [...current, tracker]);
+
     setTName("");
     setTTarget("");
     setTUnit("");
@@ -547,9 +721,25 @@ function LogView({ onChanged }: { onChanged: () => void }) {
                     </p>
                   </div>
                   <button
-                    onClick={() => {
-                      bumpProgress(date, t.id, -1);
-                      onChanged();
+                    onClick={async () => {
+                      const current = progress[t.id] ?? 0;
+                      const next = Math.max(0, current - 1);
+                      const saved = await setProgressInSupabase(
+                        userId,
+                        date,
+                        t.id,
+                        next,
+                      );
+                      if (saved) {
+                        setAllProgress((currentMap) => ({
+                          ...currentMap,
+                          [date]: {
+                            ...(currentMap[date] ?? {}),
+                            ...(next === 0 ? {} : { [t.id]: next }),
+                          },
+                        }));
+                        onChanged();
+                      }
                     }}
                     aria-label={`Remove one from ${t.name}`}
                     className="grid size-8 place-items-center rounded-full bg-white/70 font-sans text-[16px] text-ink ring-1 ring-ink/10"
@@ -557,9 +747,26 @@ function LogView({ onChanged }: { onChanged: () => void }) {
                     &minus;
                   </button>
                   <button
-                    onClick={() => {
-                      bumpProgress(date, t.id, 1);
-                      onChanged();
+                    onClick={async () => {
+                      const current = progress[t.id] ?? 0;
+                      const next = current + 1;
+
+                      const saved = await setProgressInSupabase(
+                        userId,
+                        date,
+                        t.id,
+                        next,
+                      );
+                      if (saved) {
+                        setAllProgress((currentMap) => ({
+                          ...currentMap,
+                          [date]: {
+                            ...(currentMap[date] ?? {}),
+                            [t.id]: next,
+                          },
+                        }));
+                        onChanged();
+                      }
                     }}
                     aria-label={`Add one to ${t.name}`}
                     className="grid size-8 place-items-center rounded-full bg-ink font-sans text-[16px] text-vellum"
@@ -597,9 +804,30 @@ function LogView({ onChanged }: { onChanged: () => void }) {
                 </div>
 
                 <button
-                  onClick={() => {
-                    deleteTracker(t.id);
-                    onChanged();
+                  onClick={async () => {
+                    const deleted = await deleteTrackerFromSupabase(userId, t.id);
+
+                    if (deleted) {
+                      setAllTrackers((current) =>
+                        current.filter((tracker) => tracker.id !== t.id)
+                      );
+
+                      setAllProgress((currentMap) => {
+                        const updated = { ...currentMap };
+
+                        for (const day of Object.keys(updated)) {
+                          if (updated[day]) {
+                            const updatedDay = { ...updated[day] };
+                            delete updatedDay[t.id];
+                            updated[day] = updatedDay;
+                          }
+                        }
+
+                        return updated;
+                      });
+
+                      onChanged();
+                    }
                   }}
                   className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-soft"
                   aria-label={`Delete tracker ${t.name}`}
@@ -704,9 +932,14 @@ function LogView({ onChanged }: { onChanged: () => void }) {
                   {l.content}
                 </p>
                 <button
-                  onClick={() => {
-                    deleteLog(l.id);
-                    onChanged();
+                  onClick={async () => {
+                    const deleted = await deleteLogFromSupabase(userId, l.id);
+                    if (deleted) {
+                      setAllLogs((current) =>
+                        current.filter((log) => log.id !== l.id)
+                      );
+                      onChanged();
+                    }
                   }}
                   className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft"
                   aria-label={`Delete log ${l.content}`}

@@ -21,6 +21,7 @@ export type LogEntry = {
 const STORAGE_KEY = "lamplit.diary.entries.v1";
 const NAME_KEY = "lamplit.diary.userName.v1";
 const LOG_KEY = "lamplit.diary.logs.v1";
+const LOG_MIGRATION_KEY = "lamplit.diary.logsMigrated.v1";
 
 export function getUserName(): string {
   if (typeof window === "undefined") return "";
@@ -120,27 +121,153 @@ function saveLogs(logs: LogEntry[]) {
   }
 }
 
+
 export function getLogs(): LogEntry[] {
   return loadLogs().sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function addLog(content: string, date?: string): LogEntry {
-  const logs = loadLogs();
-  const entry: LogEntry = {
-    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    date: date ?? todayKey(),
-    time: formatNow(),
-    content,
-    createdAt: Date.now(),
+type DailyLogRow = {
+  id: string;
+  date: string;
+  time: string;
+  content: string;
+  created_at: string;
+};
+
+function rowToLog(row: DailyLogRow): LogEntry {
+  return {
+    id: row.id,
+    date: row.date,
+    time: row.time,
+    content: row.content,
+    createdAt: new Date(row.created_at).getTime(),
   };
-  logs.push(entry);
+}
+
+// Load logs from Supabase and migrate existing local logs if needed.
+export async function syncLogs(userId: string): Promise<LogEntry[]> {
+  const { data: remoteLogs, error } = await supabase
+    .from("daily_logs")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to load daily logs:", error);
+    return getLogs();
+  }
+
+  const localLogs = loadLogs();
+  const migrationKey = `${LOG_MIGRATION_KEY}.${userId}`;
+
+  let alreadyMigrated = false;
+
+  try {
+    alreadyMigrated =
+      window.localStorage.getItem(migrationKey) === "1";
+  } catch {
+    // ignore
+  }
+
+  // First-time migration of existing local logs.
+  if (
+    remoteLogs.length === 0 &&
+    localLogs.length > 0 &&
+    !alreadyMigrated
+  ) {
+    const rows = localLogs.map((log) => ({
+      user_id: userId,
+      date: log.date,
+      time: log.time,
+      content: log.content,
+      created_at: new Date(log.createdAt).toISOString(),
+    }));
+
+    const { data: uploaded, error: uploadError } = await supabase
+      .from("daily_logs")
+      .insert(rows)
+      .select("*");
+
+    if (uploadError) {
+      console.error("Failed to migrate daily logs:", uploadError);
+      return getLogs();
+    }
+
+    const migratedLogs = (uploaded as DailyLogRow[]).map(rowToLog);
+    saveLogs(migratedLogs);
+
+    try {
+      window.localStorage.setItem(migrationKey, "1");
+    } catch {
+      // ignore
+    }
+
+    return getLogs();
+  }
+
+  // Supabase is the source of truth after migration.
+  const logs = (remoteLogs as DailyLogRow[]).map(rowToLog);
   saveLogs(logs);
+
+  try {
+    window.localStorage.setItem(migrationKey, "1");
+  } catch {
+    // ignore
+  }
+
+  return getLogs();
+}
+
+// Create a new log in Supabase.
+export async function addLogToSupabase(
+  userId: string,
+  content: string,
+  date?: string,
+): Promise<LogEntry | null> {
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .insert({
+      user_id: userId,
+      date: date ?? todayKey(),
+      time: formatNow(),
+      content,
+      created_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("Failed to add daily log:", error);
+    return null;
+  }
+
+  const entry = rowToLog(data as DailyLogRow);
+  saveLogs([entry, ...loadLogs()]);
+
   return entry;
 }
 
-export function deleteLog(id: string) {
-  saveLogs(loadLogs().filter((l) => l.id !== id));
+// Delete a log from Supabase.
+export async function deleteLogFromSupabase(
+  userId: string,
+  id: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("daily_logs")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Failed to delete daily log:", error);
+    return false;
+  }
+
+  saveLogs(loadLogs().filter((log) => log.id !== id));
+
+  return true;
 }
+
 
 export function todayKey(): string {
   const d = new Date();
@@ -655,9 +782,29 @@ export type Tracker = {
 };
 
 export type ProgressMap = Record<string, Record<string, number>>;
+type TrackerRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  unit: string;
+  target: number | null;
+  created_at: string;
+};
+
+function rowToTracker(row: TrackerRow): Tracker {
+  return {
+    id: row.id,
+    name: row.name,
+    unit: row.unit,
+    target: row.target ?? 0,
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
 
 const TRACKER_KEY = "lamplit.diary.trackers.v1";
 const PROGRESS_KEY = "lamplit.diary.trackerProgress.v1";
+const TRACKER_MIGRATION_KEY = "lamplit.diary.trackersMigrated.v1";
+const PROGRESS_MIGRATION_KEY = "lamplit.diary.progressMigrated.v1";
 
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -684,6 +831,25 @@ export function getTrackers(): Tracker[] {
   return Array.isArray(list) ? list : [];
 }
 
+export async function syncTrackers(userId: string): Promise<Tracker[]> {
+  const { data, error } = await supabase
+    .from("trackers")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Failed to load trackers:", error);
+    return getTrackers();
+  }
+
+  const trackers = (data as TrackerRow[]).map(rowToTracker);
+
+  writeJSON(TRACKER_KEY, trackers);
+
+  return trackers;
+}
+
 export function addTracker(name: string, target: number, unit: string): Tracker {
   const trackers = getTrackers();
   const tracker: Tracker = {
@@ -695,6 +861,35 @@ export function addTracker(name: string, target: number, unit: string): Tracker 
   };
   trackers.push(tracker);
   writeJSON(TRACKER_KEY, trackers);
+  return tracker;
+}
+
+export async function addTrackerToSupabase(
+  userId: string,
+  name: string,
+  target: number,
+  unit: string,
+): Promise<Tracker | null> {
+  const { data, error } = await supabase
+    .from("trackers")
+    .insert({
+      user_id: userId,
+      name: name.trim(),
+      unit: unit.trim(),
+      target: Math.max(1, Math.round(target) || 1),
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("Failed to add tracker:", error);
+    return null;
+  }
+
+  const tracker = rowToTracker(data as TrackerRow);
+
+  writeJSON(TRACKER_KEY, [...getTrackers(), tracker]);
+
   return tracker;
 }
 
@@ -710,10 +905,186 @@ export function deleteTracker(id: string) {
   writeJSON(PROGRESS_KEY, progress);
 }
 
+export async function deleteTrackerFromSupabase(
+  userId: string,
+  id: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("trackers")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Failed to delete tracker:", error);
+    return false;
+  }
+
+  writeJSON(
+    TRACKER_KEY,
+    getTrackers().filter((tracker) => tracker.id !== id),
+  );
+
+  const progress = getProgressMap();
+
+  for (const date of Object.keys(progress)) {
+    if (progress[date]) {
+      delete progress[date][id];
+    }
+  }
+
+  writeJSON(PROGRESS_KEY, progress);
+
+  return true;
+}
+
 export function getProgressMap(): ProgressMap {
   const map = readJSON<ProgressMap>(PROGRESS_KEY, {});
   return map && typeof map === "object" ? map : {};
 }
+
+type TrackerProgressRow = {
+  id: string;
+  user_id: string;
+  tracker_id: string;
+  date: string;
+  value: number;
+};
+
+export async function syncTrackerProgress(
+  userId: string,
+): Promise<ProgressMap> {
+  const { data, error } = await supabase
+    .from("tracker_progress")
+    .select("*")
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Failed to load tracker progress:", error);
+    return getProgressMap();
+  }
+
+  const progress: ProgressMap = {};
+
+  for (const row of data as TrackerProgressRow[]) {
+  const day = progress[row.date] ?? {};
+  day[row.tracker_id] = Number(row.value);
+  progress[row.date] = day;
+}
+
+  writeJSON(PROGRESS_KEY, progress);
+
+  return progress;
+}
+
+
+export async function migrateTrackersToSupabase(
+  userId: string,
+): Promise<boolean> {
+  const trackerMigrationKey = `${TRACKER_MIGRATION_KEY}.${userId}`;
+  const progressMigrationKey = `${PROGRESS_MIGRATION_KEY}.${userId}`;
+
+  const alreadyMigrated =
+    window.localStorage.getItem(trackerMigrationKey) === "1" &&
+    window.localStorage.getItem(progressMigrationKey) === "1";
+
+  if (alreadyMigrated) return true;
+
+  const localTrackers = getTrackers();
+  const localProgress = getProgressMap();
+
+  const { data: remoteTrackers, error: trackerError } = await supabase
+    .from("trackers")
+    .select("*")
+    .eq("user_id", userId);
+
+  if (trackerError) {
+    console.error("Failed to check existing trackers:", trackerError);
+    return false;
+  }
+
+  const idMap = new Map<string, string>();
+  const existingRemoteTrackers = remoteTrackers ?? [];
+
+  // Match existing local trackers to remote trackers by name and unit.
+  for (const local of localTrackers) {
+    const existing = existingRemoteTrackers.find(
+      (remote) => remote.name === local.name && remote.unit === local.unit,
+    );
+
+    if (existing) {
+      idMap.set(local.id, existing.id);
+    }
+  }
+
+  // Create trackers that do not already exist remotely.
+  const missingTrackers = localTrackers.filter(
+    (local) => !idMap.has(local.id),
+  );
+
+  for (const tracker of missingTrackers) {
+    const { data: inserted, error: insertError } = await supabase
+      .from("trackers")
+      .insert({
+        user_id: userId,
+        name: tracker.name,
+        unit: tracker.unit,
+        target: tracker.target,
+        created_at: new Date(tracker.createdAt).toISOString(),
+      })
+      .select("*")
+      .single();
+
+    if (insertError || !inserted) {
+      console.error("Failed to migrate tracker:", insertError);
+      return false;
+    }
+
+    idMap.set(tracker.id, inserted.id);
+  }
+
+  // Prepare progress records after all tracker IDs have been mapped.
+  const progressRows: {
+    user_id: string;
+    tracker_id: string;
+    date: string;
+    value: number;
+  }[] = [];
+
+  for (const [date, day] of Object.entries(localProgress)) {
+    for (const [oldTrackerId, value] of Object.entries(day)) {
+      const newTrackerId = idMap.get(oldTrackerId);
+
+      if (!newTrackerId) continue;
+
+      progressRows.push({
+        user_id: userId,
+        tracker_id: newTrackerId,
+        date,
+        value,
+      });
+    }
+  }
+
+  if (progressRows.length > 0) {
+    const { error: progressError } = await supabase
+      .from("tracker_progress")
+      .upsert(progressRows, {
+        onConflict: "user_id,tracker_id,date",
+      });
+
+    if (progressError) {
+      console.error("Failed to migrate tracker progress:", progressError);
+      return false;
+    }
+  }
+
+  window.localStorage.setItem(trackerMigrationKey, "1");
+  window.localStorage.setItem(progressMigrationKey, "1");
+
+  return true;
+}
+
 
 export function getProgressFor(date: string): Record<string, number> {
   return getProgressMap()[date] ?? {};
@@ -727,6 +1098,51 @@ export function setProgress(date: string, trackerId: string, value: number) {
   else day[trackerId] = next;
   map[date] = day;
   writeJSON(PROGRESS_KEY, map);
+}
+
+export async function setProgressInSupabase(
+  userId: string,
+  date: string,
+  trackerId: string,
+  value: number,
+): Promise<boolean> {
+  const next = Math.max(0, Math.round(value));
+
+  if (next === 0) {
+    const { error } = await supabase
+      .from("tracker_progress")
+      .delete()
+      .eq("user_id", userId)
+      .eq("tracker_id", trackerId)
+      .eq("date", date);
+
+    if (error) {
+      console.error("Failed to delete tracker progress:", error);
+      return false;
+    }
+  } else {
+    const { error } = await supabase
+      .from("tracker_progress")
+      .upsert(
+        {
+          user_id: userId,
+          tracker_id: trackerId,
+          date,
+          value: next,
+        },
+        {
+          onConflict: "user_id,tracker_id,date",
+        },
+      );
+
+    if (error) {
+      console.error("Failed to save tracker progress:", error);
+      return false;
+    }
+  }
+
+  setProgress(date, trackerId, next);
+  return true;
 }
 
 export function bumpProgress(date: string, trackerId: string, delta: number) {
