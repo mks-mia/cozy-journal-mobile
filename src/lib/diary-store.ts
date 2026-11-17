@@ -318,8 +318,34 @@ export type Task = {
   notified: string[]; // thresholds already fired, e.g. ["soon", "due"]
 };
 
+type TaskRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  due_at: string | null;
+  completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+  notified: string[];
+};
+
+function rowToTask(row: TaskRow): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    dueAt: row.due_at ? new Date(row.due_at).getTime() : null,
+    completed: row.completed,
+    completedAt: row.completed_at
+      ? new Date(row.completed_at).getTime()
+      : null,
+    createdAt: new Date(row.created_at).getTime(),
+    notified: row.notified ?? [],
+  };
+}
+
 const TASK_KEY = "lamplit.diary.tasks.v1";
 const REMINDER_KEY = "lamplit.diary.reminders.v1";
+const TASK_MIGRATION_KEY = "lamplit.diary.tasksMigrated.v1";
 
 function loadTasks(): Task[] {
   if (typeof window === "undefined") return [];
@@ -417,6 +443,73 @@ export function setReminderState(state: ReminderState) {
     // ignore
   }
 }
+export async function syncReminderState(
+  userId: string,
+): Promise<ReminderState> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("reminders_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load reminder settings:", error);
+    return getReminderState();
+  }
+
+  if (!data) {
+    const localState = getReminderState();
+
+    const { error: insertError } = await supabase
+      .from("user_settings")
+      .upsert(
+        {
+          user_id: userId,
+          reminders_enabled: localState.enabled,
+        },
+        { onConflict: "user_id" },
+      );
+
+    if (insertError) {
+      console.error("Failed to create reminder settings:", insertError);
+      return localState;
+    }
+
+    return localState;
+  }
+
+  const state = {
+    enabled: data.reminders_enabled,
+  };
+
+  setReminderState(state);
+
+  return state;
+}
+
+export async function setReminderStateInSupabase(
+  userId: string,
+  state: ReminderState,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: userId,
+        reminders_enabled: state.enabled,
+      },
+      { onConflict: "user_id" },
+    );
+
+  if (error) {
+    console.error("Failed to save reminder settings:", error);
+    return false;
+  }
+
+  setReminderState(state);
+
+  return true;
+}
 
 /* ---------------------------- mindfulness nudge --------------------------- */
 
@@ -492,6 +585,116 @@ export function markMindfulNotified(now = Date.now()) {
     // ignore
   }
 }
+
+export async function markMindfulNotifiedInSupabase(
+  userId: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: userId,
+        mindful_last_notified: new Date(now).toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+  if (error) {
+    console.error("Failed to sync mindful notification:", error);
+    return false;
+  }
+
+  markMindfulNotified(now);
+
+  return true;
+}
+
+export async function syncMindfulNotified(
+  userId: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("mindful_last_notified")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load mindful notification:", error);
+    return;
+  }
+
+  if (!data) return;
+
+  const remoteTimestamp = data.mindful_last_notified;
+
+  if (remoteTimestamp) {
+    const timestamp = new Date(remoteTimestamp).getTime();
+
+    if (Number.isFinite(timestamp)) {
+      markMindfulNotified(timestamp);
+    }
+  }
+}
+
+export async function markMindfulShownInSupabase(
+  userId: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: userId,
+        mindful_last_shown: new Date(now).toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+  if (error) {
+    console.error("Failed to sync mindful chat timestamp:", error);
+    return false;
+  }
+
+  markMindfulShown(now);
+  return true;
+}
+
+
+export async function syncMindfulShown(userId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("mindful_last_shown")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load mindful chat timestamp:", error);
+    return;
+  }
+
+  if (data?.mindful_last_shown) {
+    const timestamp = new Date(data.mindful_last_shown).getTime();
+
+    if (Number.isFinite(timestamp)) {
+      markMindfulShown(timestamp);
+    }
+
+    return;
+  }
+
+  // Migrate the existing local timestamp to Supabase.
+  if (typeof window !== "undefined") {
+    const localTimestamp = Number(
+      window.localStorage.getItem("lamplit.diary.mindful.v1") ?? 0,
+    );
+
+    if (localTimestamp > 0 && Number.isFinite(localTimestamp)) {
+      await markMindfulShownInSupabase(userId, localTimestamp);
+    }
+  }
+}
+
 
 /* ---------------------------------- data ---------------------------------- */
 
@@ -848,6 +1051,173 @@ export async function syncTrackers(userId: string): Promise<Tracker[]> {
   writeJSON(TRACKER_KEY, trackers);
 
   return trackers;
+}
+
+export async function syncTasks(userId: string): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Failed to load tasks:", error);
+    return getTasks();
+  }
+
+  const tasks = (data as TaskRow[]).map(rowToTask);
+
+  saveTasks(tasks);
+
+  return tasks;
+}
+
+export async function addTaskToSupabase(
+  userId: string,
+  title: string,
+  dueAt: number | null,
+): Promise<Task | null> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert({
+      user_id: userId,
+      title: title.trim(),
+      due_at: dueAt ? new Date(dueAt).toISOString() : null,
+      completed: false,
+      completed_at: null,
+      notified: [],
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Failed to add task:", error);
+    return null;
+  }
+
+  const task = rowToTask(data as TaskRow);
+
+  saveTasks([...getTasks(), task]);
+
+  return task;
+}
+
+export async function updateTaskInSupabase(
+  userId: string,
+  id: string,
+  patch: Partial<Omit<Task, "id">>,
+): Promise<boolean> {
+  const updates: Record<string, unknown> = {};
+
+  if (patch.title !== undefined) updates["title"] = patch.title;
+
+  if (patch.dueAt !== undefined) {
+    updates["due_at"] = patch.dueAt
+      ? new Date(patch.dueAt).toISOString()
+      : null;
+  }
+
+  if (patch.completed !== undefined) {
+    updates["completed"] = patch.completed;
+  }
+
+  if (patch.completedAt !== undefined) {
+    updates["completed_at"] = patch.completedAt
+      ? new Date(patch.completedAt).toISOString()
+      : null;
+  }
+
+  if (patch.notified !== undefined) {
+    updates["notified"] = patch.notified;
+  }
+
+  const { error } = await supabase
+    .from("tasks")
+    .update(updates)
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Failed to update task:", error);
+    return false;
+  }
+
+  const tasks = getTasks().map((task) =>
+    task.id === id ? { ...task, ...patch } : task,
+  );
+
+  saveTasks(tasks);
+
+  return true;
+}
+
+export async function deleteTaskFromSupabase(
+  userId: string,
+  id: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Failed to delete task:", error);
+    return false;
+  }
+
+  saveTasks(getTasks().filter((task) => task.id !== id));
+
+  return true;
+}
+
+export async function migrateTasksToSupabase(
+  userId: string,
+): Promise<boolean> {
+  const migrationKey = `${TASK_MIGRATION_KEY}.${userId}`;
+
+  if (typeof window === "undefined") return false;
+
+  const alreadyMigrated =
+    window.localStorage.getItem(migrationKey) === "true";
+
+  if (alreadyMigrated) {
+    await syncTasks(userId);
+    return true;
+  }
+
+  const localTasks = getTasks();
+
+  if (localTasks.length > 0) {
+    const rows = localTasks.map((task) => ({
+      user_id: userId,
+      title: task.title,
+      due_at: task.dueAt
+        ? new Date(task.dueAt).toISOString()
+        : null,
+      completed: task.completed,
+      completed_at: task.completedAt
+        ? new Date(task.completedAt).toISOString()
+        : null,
+      created_at: new Date(task.createdAt).toISOString(),
+      notified: task.notified ?? [],
+    }));
+
+    const { error } = await supabase
+      .from("tasks")
+      .insert(rows);
+
+    if (error) {
+      console.error("Failed to migrate tasks:", error);
+      return false;
+    }
+  }
+
+  window.localStorage.setItem(migrationKey, "true");
+
+  await syncTasks(userId);
+
+  return true;
 }
 
 export function addTracker(name: string, target: number, unit: string): Tracker {

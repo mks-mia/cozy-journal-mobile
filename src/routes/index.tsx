@@ -36,10 +36,20 @@ import {
   toggleTask,
   deleteTask,
   markNotified,
+  syncTasks,
+  addTaskToSupabase,
+  updateTaskInSupabase,
+  deleteTaskFromSupabase,
+  migrateTasksToSupabase,
   getReminderState,
   setReminderState,
+  syncReminderState,
+  setReminderStateInSupabase,
+  syncMindfulNotified,
   dueMindfulNotification,
-  markMindfulNotified,
+  markMindfulNotifiedInSupabase,
+  markMindfulShownInSupabase,
+  syncMindfulShown,
   exportData,
   clearAllData,
   type DiaryPage,
@@ -114,9 +124,31 @@ type View = "pages" | "page" | "log" | "tasks" | "friend" | "stats" | "settings"
 
 function DiaryApp() {
   const user = useAuth();
+  const userId = user?.id;
   const name = user?.user_metadata?.["name"] ?? user?.email ?? "";
   const [view, setView] = useState<View>("pages");
   const [viewRestored, setViewRestored] = useState(false);
+  const [mindfulSynced, setMindfulSynced] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
+
+    const loadMindfulNotification = async () => {
+      await syncMindfulNotified(userId);
+
+      if (!cancelled) {
+        setMindfulSynced(true);
+      }
+    };
+
+    void loadMindfulNotification();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   useEffect(() => {
     const savedView = sessionStorage.getItem("lamplit.activeView");
@@ -143,13 +175,73 @@ function DiaryApp() {
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [, forceTick] = useState(0);
-  const refresh = () => forceTick((n) => n + 1);
+  const refresh = () => {
+    forceTick((n) => n + 1);
+    setAllTasks(getTasks());
+  };
   
   const [hydrated, setHydrated] = useState(false);
   //const [name, setName] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [allTasks, setAllTasks] = useState<Task[]>(() => getTasks());
 
+  useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | undefined;
+
+    const loadTasks = async () => {
+      const migrated = await migrateTasksToSupabase(userId);
+
+      if (!migrated || cancelled) return;
+
+      const syncedTasks = await syncTasks(userId);
+
+      if (cancelled) return;
+
+      setAllTasks(syncedTasks);
+
+      channel = supabase
+        .channel(`tasks-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "tasks",
+          },
+          () => {
+            void refreshTasks();
+          },
+        )
+        .subscribe((status, error) => {
+          console.log("Tasks realtime status:", status);
+          if (error) {
+            console.error("Tasks realtime error:", error);
+          }
+        });
+    };
+
+    const refreshTasks = async () => {
+      const syncedTasks = await syncTasks(userId);
+
+      if (cancelled) return;
+
+      setAllTasks(syncedTasks);
+    };
+
+    void loadTasks();
+
+    return () => {
+      cancelled = true;
+
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [userId]);
   //waits for the user's Supabase diary pages to load before displaying the diary.
   useEffect(() => {
     let cancelled = false;
@@ -174,7 +266,7 @@ function DiaryApp() {
 
   // Read fresh every render — small data set, always in sync with storage.
   const pages = hydrated ? getPages() : [];
-  const tasks = hydrated ? getTasks() : [];
+  const tasks = hydrated ? allTasks : [];
   const buckets = bucketTasks(tasks, now);
   const dueSoonCount = buckets.overdue.length + buckets.today.length;
 
@@ -186,6 +278,7 @@ function DiaryApp() {
 
   // Device notifications (opt-in) for tasks crossing a reminder threshold.
   useEffect(() => {
+    if (!userId) return;
     if (typeof window === "undefined" || typeof Notification === "undefined") {
       return;
     }
@@ -206,24 +299,28 @@ function DiaryApp() {
         // notification blocked — in-app banner still covers it
       }
       markNotified(task.id, threshold);
+      void updateTaskInSupabase(userId, task.id, {
+        notified: [...task.notified, threshold],
+      });
     }
 
     // Fortnightly mindfulness nudge, on its own schedule from the chat one.
-    const phrase = dueMindfulNotification(now);
-    if (phrase) {
-      try {
-        new Notification("A moment of mindfulness", {
-          body: phrase,
-          tag: "lamplit-mindful",
-        });
-      } catch {
-        // notification blocked — the Friend chat still shows it
+    if (mindfulSynced) {
+      const phrase = dueMindfulNotification(now);
+      if (phrase) {
+        try {
+          new Notification("A moment of mindfulness", {
+            body: phrase,
+            tag: "lamplit-mindful",
+          });
+        } catch {
+          // notification blocked — the Friend chat still shows it
+        }
+        void markMindfulNotifiedInSupabase(userId, now);
       }
-      markMindfulNotified(now);
     }
-
     if (pending.length > 0) refresh();
-  }, [now]);
+  }, [now,userId, mindfulSynced]);
 
   const openPage = (id: string) => {
     setOpenId(id);
@@ -276,7 +373,7 @@ function DiaryApp() {
         {view === "log" ? (
           <LogView userId={user.id} onChanged={refresh} />
         ) : view === "tasks" ? (
-          <TasksView now={now} buckets={buckets} onChanged={refresh} />
+          <TasksView userId={user.id} now={now} buckets={buckets} onChanged={refresh} />
         ) : view === "friend" ? (
           <FriendChat name={name} />
         ) : view === "stats" ? (
@@ -515,6 +612,7 @@ function LogView({userId,onChanged,}: {userId: string;onChanged: () => void;}) {
 
 
   useEffect(() => {
+    if (!userId) return;
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | undefined;
 
@@ -587,7 +685,6 @@ function LogView({userId,onChanged,}: {userId: string;onChanged: () => void;}) {
       }
     };
   }, [userId]);
-
 
   const trackers = allTrackers;
   const progress = allProgress[date] ?? {};
@@ -956,10 +1053,12 @@ function LogView({userId,onChanged,}: {userId: string;onChanged: () => void;}) {
 }
 
 function TasksView({
+  userId,
   now,
   buckets,
   onChanged,
 }: {
+  userId: string;
   now: number;
   buckets: ReturnType<typeof bucketTasks>;
   onChanged: () => void;
@@ -969,9 +1068,17 @@ function TasksView({
   const [showDone, setShowDone] = useState(false);
   const canAdd = title.trim().length > 0;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canAdd) return;
-    addTask(title.trim(), parseDueInput(due));
+
+    const task = await addTaskToSupabase(
+      userId,
+      title.trim(),
+      parseDueInput(due),
+    );
+
+    if (!task) return;
+
     setTitle("");
     setDue("");
     onChanged();
@@ -1029,15 +1136,10 @@ function TasksView({
           />
         ) : (
           <div className="space-y-4">
-            <TaskGroup label="Overdue" tasks={buckets.overdue} now={now} onChanged={onChanged} />
-            <TaskGroup label="Today" tasks={buckets.today} now={now} onChanged={onChanged} />
-            <TaskGroup label="Upcoming" tasks={buckets.upcoming} now={now} onChanged={onChanged} />
-            <TaskGroup
-              label="No deadline"
-              tasks={buckets.someday}
-              now={now}
-              onChanged={onChanged}
-            />
+            <TaskGroup label="Overdue" tasks={buckets.overdue} now={now} userId={userId} onChanged={onChanged} />
+            <TaskGroup label="Today" tasks={buckets.today} now={now} userId={userId} onChanged={onChanged} />
+            <TaskGroup label="Upcoming" tasks={buckets.upcoming} now={now} userId={userId} onChanged={onChanged} />
+            <TaskGroup label="No deadline" tasks={buckets.someday}  now={now} userId={userId} onChanged={onChanged}/>
 
             {buckets.done.length > 0 && (
               <div>
@@ -1050,7 +1152,7 @@ function TasksView({
                 {showDone && (
                   <div className="mt-2 space-y-2">
                     {buckets.done.map((t) => (
-                      <TaskRow key={t.id} task={t} now={now} onChanged={onChanged} />
+                      <TaskRow key={t.id} task={t} now={now} userId={userId} onChanged={onChanged} />
                     ))}
                   </div>
                 )}
@@ -1067,11 +1169,13 @@ function TaskGroup({
   label,
   tasks,
   now,
+  userId,
   onChanged,
 }: {
   label: string;
   tasks: Task[];
   now: number;
+  userId: string;
   onChanged: () => void;
 }) {
   if (tasks.length === 0) return null;
@@ -1080,14 +1184,14 @@ function TaskGroup({
       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">{label}</p>
       <div className="mt-2 space-y-2">
         {tasks.map((t) => (
-          <TaskRow key={t.id} task={t} now={now} onChanged={onChanged} />
+          <TaskRow key={t.id} task={t} now={now} userId={userId} onChanged={onChanged} />
         ))}
       </div>
     </div>
   );
 }
 
-function TaskRow({ task, now, onChanged }: { task: Task; now: number; onChanged: () => void }) {
+function TaskRow({ task, now, userId, onChanged }: { task: Task; now: number;userId: string; onChanged: () => void }) {
   const level = urgency(task, now);
   const ring =
     level === "overdue"
@@ -1101,9 +1205,13 @@ function TaskRow({ task, now, onChanged }: { task: Task; now: number; onChanged:
   return (
     <div className={`glass flex items-start gap-3 rounded-[14px] px-4 py-3 ${ring}`}>
       <button
-        onClick={() => {
-          toggleTask(task.id);
-          onChanged();
+        onClick={async () => {
+          const completed = !task.completed;
+          const success = await updateTaskInSupabase(userId, task.id, {
+            completed,
+            completedAt: completed ? Date.now() : null,
+          });
+          if (success) onChanged();
         }}
         aria-label={task.completed ? `Reopen ${task.title}` : `Complete ${task.title}`}
         className={`mt-[2px] grid size-5 shrink-0 place-items-center rounded-full ring-1 transition-colors ${
@@ -1132,9 +1240,9 @@ function TaskRow({ task, now, onChanged }: { task: Task; now: number; onChanged:
       </div>
 
       <button
-        onClick={() => {
-          deleteTask(task.id);
-          onChanged();
+        onClick={async () => {
+          const success = await deleteTaskFromSupabase(userId, task.id);
+          if (success) onChanged();
         }}
         className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft"
         aria-label={`Delete task ${task.title}`}
@@ -1167,15 +1275,40 @@ function SettingsView({
       : "unsupported",
   );
   const [enabled, setEnabled] = useState(() => getReminderState().enabled);
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const loadReminderSettings = async () => {
+      const state = await syncReminderState(user.id);
+      if (!cancelled) {
+        setEnabled(state.enabled);
+      }
+    };
+    void loadReminderSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
   const [confirming, setConfirming] = useState(false);
 
   const enableReminders = async () => {
     if (typeof Notification === "undefined") return;
+
     const result = await Notification.requestPermission();
     setPermission(result);
+
     const on = result === "granted";
+
+    // Update local state immediately
     setReminderState({ enabled: on });
     setEnabled(on);
+
+    // Save the preference to Supabase
+    if (user?.id) {
+      await setReminderStateInSupabase(user.id, {
+        enabled: on,
+      });
+    }
   };
 
   const download = () => {

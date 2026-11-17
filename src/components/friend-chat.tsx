@@ -5,8 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../components/auth";
 import { createClient } from "../lib/supabase";
-import { dueMindfulPhrase, markMindfulShown } from "../lib/diary-store";
-
+import { dueMindfulPhrase,markMindfulShown, markMindfulShownInSupabase, syncMindfulShown, } from "../lib/diary-store";
 let mindfulShownThisVisit = false;
 
 type Session = {
@@ -23,6 +22,28 @@ const newSession = (): Session => ({
 
 export function FriendChat({ name }: { name: string }) {
   const user = useAuth();
+  const [mindfulSynced, setMindfulSynced] = useState(false);
+
+  useEffect(() => {
+  if (!user?.id) return;
+
+  let cancelled = false;
+
+  const loadMindfulState = async () => {
+    await syncMindfulShown(user.id);
+
+    if (!cancelled) {
+      setMindfulSynced(true);
+    }
+  };
+
+  void loadMindfulState();
+
+  return () => {
+    cancelled = true;
+  };
+}, [user?.id]);
+
   const supabase = useMemo(() => createClient(), []);
   const [listOpen, setListOpen] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -335,6 +356,7 @@ export function FriendChat({ name }: { name: string }) {
           key={active.id}
           sessionId={active.id}
           name={name}
+          mindfulSynced={mindfulSynced}
           onFirstMessage={(text) => titleFor(active.id, text)}
         />
       ) : (
@@ -347,10 +369,12 @@ export function FriendChat({ name }: { name: string }) {
 function ChatWindow({
   sessionId,
   name,
+  mindfulSynced,
   onFirstMessage,
 }: {
   sessionId: string;
   name: string;
+  mindfulSynced: boolean;
   onFirstMessage: (text: string) => void;
 }) {
   const user = useAuth();
@@ -596,8 +620,15 @@ function ChatWindow({
   }, [sessionId]);
 
   // Show a mindfulness thought at most once per visit when one is due.
+  
   useEffect(() => {
-    if (mindfulShownThisVisit || historyLoading || messages.length > 0) {
+    if (
+      !mindfulSynced ||
+      !user?.id ||
+      mindfulShownThisVisit ||
+      historyLoading ||
+      messages.length > 0
+    ) {
       return;
     }
 
@@ -605,7 +636,9 @@ function ChatWindow({
     if (!phrase) return;
 
     mindfulShownThisVisit = true;
-    markMindfulShown();
+
+    const now = Date.now();
+    void markMindfulShownInSupabase(user.id, now);
 
     setMessages([
       {
@@ -621,7 +654,16 @@ function ChatWindow({
     ]);
 
     onFirstMessage("A thought for this fortnight");
-  }, [name, historyLoading, messages.length, setMessages, onFirstMessage]);
+  }, [
+    mindfulSynced,
+    user?.id,
+    name,
+    historyLoading,
+    messages.length,
+    setMessages,
+    onFirstMessage,
+  ]);
+
 
   useEffect(() => {
     boxRef.current?.scrollTo({
