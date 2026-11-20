@@ -43,8 +43,6 @@ import {
   migrateTasksToSupabase,
   getReminderState,
   setReminderState,
-  syncReminderState,
-  setReminderStateInSupabase,
   syncMindfulNotified,
   dueMindfulNotification,
   markMindfulNotifiedInSupabase,
@@ -184,6 +182,9 @@ function DiaryApp() {
   //const [name, setName] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [remindersEnabled, setRemindersEnabled] = useState(
+    () => getReminderState().enabled,
+  );
   const [allTasks, setAllTasks] = useState<Task[]>(() => getTasks());
 
   useEffect(() => {
@@ -361,7 +362,7 @@ function DiaryApp() {
       <div className="relative z-10 flex min-h-dvh flex-col px-5 pb-4 pt-5">
         <Header name={name} onHome={() => go("pages")} onSettings={() => go("settings")} />
 
-        {!bannerDismissed && dueSoonCount > 0 && view !== "tasks" && (
+        {remindersEnabled && !bannerDismissed && dueSoonCount > 0 && view !== "tasks" && (
           <DueBanner
             overdue={buckets.overdue.length}
             today={buckets.today.length}
@@ -381,6 +382,9 @@ function DiaryApp() {
         ) : view === "settings" ? (
           <SettingsView
           name={name}
+          onReminderChange={(enabled) => {
+            setRemindersEnabled(enabled);
+          }}
           onRename={async (value) => {
             const { error } = await supabase.auth.updateUser({
               data: {
@@ -429,7 +433,7 @@ function DiaryApp() {
 
         <BottomNav
           tab={tab}
-          taskBadge={dueSoonCount}
+          taskBadge={remindersEnabled ? dueSoonCount : 0}
           onDiary={() => go("pages")}
           onLog={() => go("log")}
           onTasks={() => go("tasks")}
@@ -1259,12 +1263,14 @@ function SettingsView({
   onLogout,
   onBack,
   onCleared,
+  onReminderChange,
 }: {
   name: string;
   onRename: (value: string) => void;
   onLogout: () => void | Promise<void>;
   onBack: () => void;
   onCleared: () => void;
+  onReminderChange: (enabled: boolean) => void;
 }) {
   const user = useAuth();
   const [draft, setDraft] = useState(name);
@@ -1275,20 +1281,7 @@ function SettingsView({
       : "unsupported",
   );
   const [enabled, setEnabled] = useState(() => getReminderState().enabled);
-  useEffect(() => {
-    if (!user?.id) return;
-    let cancelled = false;
-    const loadReminderSettings = async () => {
-      const state = await syncReminderState(user.id);
-      if (!cancelled) {
-        setEnabled(state.enabled);
-      }
-    };
-    void loadReminderSettings();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
+
   const [confirming, setConfirming] = useState(false);
 
   const enableReminders = async () => {
@@ -1302,13 +1295,13 @@ function SettingsView({
     // Update local state immediately
     setReminderState({ enabled: on });
     setEnabled(on);
+    onReminderChange(on);
+  };
 
-    // Save the preference to Supabase
-    if (user?.id) {
-      await setReminderStateInSupabase(user.id, {
-        enabled: on,
-      });
-    }
+  const disableReminders = () => {
+    setReminderState({ enabled: false });
+    setEnabled(false);
+    onReminderChange(false);
   };
 
   const download = () => {
@@ -1399,26 +1392,29 @@ function SettingsView({
             you open Lamplit. You can also allow device notifications for a nudge an hour before
             each deadline.
           </p>
-          {permission === "granted" && enabled ? (
-            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
-              Device notifications on
-            </p>
-          ) : permission === "denied" ? (
-            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
-              Blocked in browser settings
-            </p>
-          ) : permission === "unsupported" ? (
-            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
-              Not supported on this device
-            </p>
-          ) : (
-            <button
-              onClick={enableReminders}
-              className="lamplit-button lamplit-button:hover lamplit-button:active mt-3 rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
-            >
-              Enable reminders
-            </button>
-          )}
+          {enabled ? (
+              <button
+                onClick={disableReminders}
+                className="lamplit-button lamplit-button:hover lamplit-button:active mt-3 rounded-full bg-white/60 px-4 py-2.5 font-sans text-[13px] font-medium text-ink ring-1 ring-ink/10"
+              >
+                Disable reminders
+              </button>
+            ) : permission === "denied" ? (
+              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
+                Blocked in browser settings
+              </p>
+            ) : permission === "unsupported" ? (
+              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft">
+                Not supported on this device
+              </p>
+            ) : (
+              <button
+                onClick={enableReminders}
+                className="lamplit-button lamplit-button:hover lamplit-button:active mt-3 rounded-full bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-vellum"
+              >
+                Enable reminders
+              </button>
+            )}
           <p className="mt-3 font-sans text-[12px] leading-relaxed text-ink-soft">
             Notifications are handled on your device. They work best while Lamplit is open or recently used, iPhone home-screen apps in particular may not wake in the background. The in-app banner is the reliable layer.
           </p>
