@@ -2,6 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarIcon } from "lucide-react";
 import {
+  subscribeToPush,
+  unsubscribeFromPush,
+} from "@/lib/push-notifications";
+import {
   getPages,
   getPage,
   createPage,
@@ -1068,7 +1072,9 @@ function TasksView({
   onChanged: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const [due, setDue] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
+  const due = dueDate? `${dueDate}T${dueTime || "23:59"}`: "";
   const [showDone, setShowDone] = useState(false);
   const canAdd = title.trim().length > 0;
 
@@ -1084,7 +1090,8 @@ function TasksView({
     if (!task) return;
 
     setTitle("");
-    setDue("");
+    setDueDate("");
+    setDueTime("");
     onChanged();
   };
 
@@ -1115,11 +1122,19 @@ function TasksView({
           />
           <div className="mt-2.5 flex items-center gap-2 border-t border-line pt-2.5">
             <input
-              type="datetime-local"
-              value={due}
-              onChange={(e) => setDue(e.target.value)}
-              aria-label="Deadline (optional)"
-              className="min-w-0 flex-1 rounded-[10px] bg-white/50 px-2.5 py-2 font-mono text-[11px] text-ink ring-1 ring-ink/10 focus:outline-none focus:ring-2 focus:ring-lamplight/50"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              aria-label="Deadline date (optional)"
+              className="min-w-0 flex-1 w-full rounded-[10px] bg-white/50 px-2.5 py-2 font-mono text-[11px] text-ink ring-1 ring-ink/10 focus:outline-none focus:ring-2 focus:ring-lamplight/50"
+            />
+
+            <input
+              type="time"
+              value={dueTime}
+              onChange={(e) => setDueTime(e.target.value)}
+              aria-label="Deadline time (optional)"
+              className="min-w-0 flex-1 w-full rounded-[10px] bg-white/50 px-2.5 py-2 font-mono text-[11px] text-ink ring-1 ring-ink/10 focus:outline-none focus:ring-2 focus:ring-lamplight/50"
             />
             <button
               type="submit"
@@ -1292,16 +1307,35 @@ function SettingsView({
 
     const on = result === "granted";
 
-    // Update local state immediately
+    if (on && user?.id) {
+      try {
+        await subscribeToPush(user.id);
+        console.log("Lamplit push subscription saved.");
+      } catch (error) {
+        console.error("Push subscription failed:", error);
+      }
+    }
+
+    // Update local reminder state
     setReminderState({ enabled: on });
     setEnabled(on);
     onReminderChange(on);
   };
 
-  const disableReminders = () => {
+  const disableReminders = async () => {
+    // Disable local reminders immediately
     setReminderState({ enabled: false });
     setEnabled(false);
     onReminderChange(false);
+
+    if (user?.id) {
+      try {
+        await unsubscribeFromPush(user.id);
+        console.log("Lamplit push subscription removed.");
+      } catch (error) {
+        console.error("Push unsubscribe failed:", error);
+      }
+    }
   };
 
   const download = () => {
