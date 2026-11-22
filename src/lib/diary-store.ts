@@ -751,6 +751,7 @@ export type DiaryPage = {
 
 const PAGE_KEY = "lamplit.diary.pages.v1";
 const PAGE_MIGRATION_KEY = "lamplit.diary.pagesMigrated.v1";
+const PAGE_CLOUD_MIGRATION_KEY = "lamplit.diary.pagesCloudMigrated.v1";
 
 function loadPages(): DiaryPage[] {
   if (typeof window === "undefined") return [];
@@ -888,6 +889,7 @@ function rowToPage(row: {
   };
 }
 
+
 export async function syncPages(userId: string): Promise<void> {
   const { data: remotePages, error } = await supabase
     .from("diary_pages")
@@ -896,45 +898,54 @@ export async function syncPages(userId: string): Promise<void> {
     .order("updated_at", { ascending: false });
 
   if (error) {
-    //console.error("Failed to load diary pages:", error);
-    
     console.error("Failed to load diary pages:", JSON.stringify(error, null, 2));
-
     return;
   }
 
   const localPages = loadPages();
+  const migrationKey = `${PAGE_CLOUD_MIGRATION_KEY}.${userId}`;
 
-  // First-time migration:
-  // if Supabase is empty but this device has pages, upload them.
-  if (remotePages.length === 0 && localPages.length > 0) {
+  const alreadyMigrated =
+    typeof window !== "undefined" &&
+    window.localStorage.getItem(migrationKey) === "1";
+
+  // First-time cloud migration only.
+  if (!alreadyMigrated && remotePages.length === 0 && localPages.length > 0) {
     const migratedPages = localPages.map((page) => ({
       ...page,
-      // Old local IDs such as "page-123..." are not UUIDs.
-      // Generate UUIDs before inserting into Supabase.
-      id:
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(page.id)
-          ? page.id
-          : crypto.randomUUID(),
+      id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(page.id)
+        ? page.id
+        : crypto.randomUUID(),
     }));
 
     savePages(migratedPages);
+
     const { data: uploaded, error: uploadError } = await supabase
       .from("diary_pages")
       .upsert(migratedPages.map((page) => pageToRow(page, userId)))
       .select();
+
     if (uploadError) {
       console.error("Failed to migrate diary pages:", uploadError);
       return;
     }
+
     if (uploaded) {
       savePages(uploaded.map(rowToPage));
     }
+
+    window.localStorage.setItem(migrationKey, "1");
     return;
   }
-  // Supabase already has the account's pages.
+
+  // Use Supabase as the source of truth after migration.
   savePages(remotePages.map(rowToPage));
+
+  if (typeof window !== "undefined" && !alreadyMigrated) {
+    window.localStorage.setItem(migrationKey, "1");
+  }
 }
+
 
 export async function syncPage(
   userId: string,

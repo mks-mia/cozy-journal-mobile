@@ -248,22 +248,60 @@ function DiaryApp() {
     };
   }, [userId]);
   //waits for the user's Supabase diary pages to load before displaying the diary.
+  
   useEffect(() => {
-    let cancelled = false;
-    setHydrated(false);
-    if (!user?.id) {
+    if (!userId) {
       setHydrated(true);
       return;
     }
-    void syncPages(user.id).finally(() => {
+
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | undefined;
+
+    const refreshPages = async () => {
+      await syncPages(userId);
+
       if (!cancelled) {
-        setHydrated(true);
+        refresh();
       }
-    });
+    };
+
+    const loadPagesAndSubscribe = async () => {
+      setHydrated(false);
+
+      await syncPages(userId);
+
+      if (cancelled) return;
+
+      setHydrated(true);
+
+      channel = supabase
+        .channel(`diary-pages-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "diary_pages",
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            void refreshPages();
+          },
+        )
+        .subscribe();
+    };
+
+    void loadPagesAndSubscribe();
+
     return () => {
       cancelled = true;
+
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
     };
-  }, [user?.id]);
+  }, [userId]);
   if (!user) {
     return null;
   }
